@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.specs/
+.DS_Store
+.zed/
+*.log
+.upstream-merge-state.json

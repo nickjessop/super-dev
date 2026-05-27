@@ -1,0 +1,26 @@
+{
+  "name": "super-dev-mcp",
+  "version": "0.1.0",
+  "description": "MCP server providing spec-driven development workflow tools and slash commands for AI agents (Zed, Claude, etc.)",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "super-dev-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "prepare": "npm run build",
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.3"
+  }
+}
