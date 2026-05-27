@@ -148,8 +148,6 @@ export const ttsTools: ToolDef[] = [
           speechMode,
           "--chime",
           chime,
-          "--project-root",
-          ctx.projectRoot,
           "--skip-subagents",
           String(
             skipSubAgents ?? process.env.SUPER_DEV_SKIP_SUBAGENTS !== "false",

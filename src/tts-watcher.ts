@@ -28,7 +28,6 @@ const RATE = getArg("rate", "210");
 const SPEECH_MODE = getArg("speech-mode", "summary");
 const CHIME_SOUND = getArg("chime", "/System/Library/Sounds/Blow.aiff");
 const POLL_MS = parseInt(getArg("poll", "1500"), 10);
-const PROJECT_ROOT = getArg("project-root", "");
 const SKIP_SUBAGENTS = getArg("skip-subagents", "true") === "true";
 
 writeFileSync(PID_FILE, String(process.pid));
@@ -62,14 +61,7 @@ interface ThreadRow {
 
 function getLatestThread(): ThreadRow | null {
   try {
-    let query: string;
-    if (PROJECT_ROOT) {
-      // Escape single quotes in path for SQL
-      const escaped = PROJECT_ROOT.replace(/'/g, "''");
-      query = `SELECT id, summary, updated_at FROM threads WHERE folder_paths LIKE '%${escaped}%' ORDER BY updated_at DESC LIMIT 1`;
-    } else {
-      query = `SELECT id, summary, updated_at FROM threads ORDER BY updated_at DESC LIMIT 1`;
-    }
+    const query = `SELECT id, summary, updated_at FROM threads ORDER BY updated_at DESC LIMIT 1`;
     const result = execSync(
       `sqlite3 -json -readonly "${THREADS_DB}" "${query}"`,
       { encoding: "utf-8", timeout: 5000 },
