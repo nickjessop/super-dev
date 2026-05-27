@@ -61,6 +61,33 @@ The server determines which project it's operating on (in priority order):
 2. MCP `roots/list` — asks the client for workspace roots
 3. `process.cwd()` fallback
 
+### Disabling Features
+
+All features are enabled by default. Disable what you don't need with the `SUPER_DEV_DISABLE` env var to reduce tool clutter and context overhead:
+
+```json
+{
+  "context_servers": {
+    "super-dev": {
+      "command": "/path/to/super-dev-mcp/run.sh",
+      "env": {
+        "SUPER_DEV_DISABLE": "voice,upstream,threads"
+      }
+    }
+  }
+}
+```
+
+| Group | Tools | Prompts |
+|-------|-------|--------|
+| `spec` | spec_create, spec_read, spec_status, spec_approve, spec_task_complete | /spec-plan, /spec-execute |
+| `review` | — | /code-review |
+| `design` | — | /design, /design-review |
+| `rules` | load_rules + rule:// resources | — |
+| `threads` | thread_list, thread_read, thread_search | — |
+| `voice` | voice_mode | /toggle-voice-mode |
+| `upstream` | upstream_status + all merge tools | /upstream-merge |
+
 ## Quick Reference
 
 ### Slash Commands

@@ -19,6 +19,61 @@ import { upstreamTools } from "./lib/upstream-tools.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const promptsDir = join(__dirname, "..", "prompts");
 
+// --- Feature groups (SUPER_DEV_DISABLE) ---
+const disabledGroups = new Set(
+  (process.env.SUPER_DEV_DISABLE || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
+);
+
+const TOOL_GROUPS: Record<string, string> = {
+  spec_create: "spec",
+  spec_read: "spec",
+  spec_status: "spec",
+  spec_approve: "spec",
+  spec_task_complete: "spec",
+  load_rules: "rules",
+  thread_list: "threads",
+  thread_read: "threads",
+  thread_search: "threads",
+  voice_mode: "voice",
+  upstream_status: "upstream",
+  upstream_categorize_changes: "upstream",
+  upstream_resolve_file: "upstream",
+  upstream_resolve_batch: "upstream",
+  upstream_diff_file: "upstream",
+  upstream_verify: "upstream",
+  upstream_complete: "upstream",
+  upstream_abort: "upstream",
+};
+
+const PROMPT_GROUPS: Record<string, string> = {
+  "spec-plan": "spec",
+  "spec-execute": "spec",
+  "code-review": "review",
+  design: "design",
+  "design-review": "design",
+  "toggle-voice-mode": "voice",
+  "upstream-merge": "upstream",
+};
+
+function isToolEnabled(toolName: string): boolean {
+  const group = TOOL_GROUPS[toolName];
+  return !group || !disabledGroups.has(group);
+}
+
+function isPromptEnabled(promptName: string): boolean {
+  const group = PROMPT_GROUPS[promptName];
+  return !group || !disabledGroups.has(group);
+}
+
+if (disabledGroups.size > 0) {
+  process.stderr.write(
+    `[super-dev] disabled feature groups: ${[...disabledGroups].join(", ")}\n`,
+  );
+}
+
 const server = new McpServer({
   name: "super-dev",
   version: "0.2.0",
@@ -107,6 +162,8 @@ const promptFiles = readdirSync(promptsDir).filter((f: string) =>
 
 for (const file of promptFiles) {
   const name = file.replace(".md", "");
+  if (!isPromptEnabled(name)) continue;
+
   const content = readFileSync(join(promptsDir, file), "utf-8");
   const firstLine = content.split("\n")[0];
   const description = firstLine.startsWith("# ")
@@ -156,6 +213,8 @@ function syncMergeToolVisibility(): void {
 
 // Tools that need the project root resolved before running.
 for (const tool of [...specTools, ...rulesTools]) {
+  if (!isToolEnabled(tool.name)) continue;
+
   server.registerTool(
     tool.name,
     {
@@ -171,6 +230,8 @@ for (const tool of [...specTools, ...rulesTools]) {
 
 // Tools that do NOT need the project root.
 for (const tool of [...threadHistoryTools, ...ttsTools]) {
+  if (!isToolEnabled(tool.name)) continue;
+
   server.registerTool(
     tool.name,
     {
@@ -182,6 +243,8 @@ for (const tool of [...threadHistoryTools, ...ttsTools]) {
 }
 
 for (const tool of upstreamTools) {
+  if (!isToolEnabled(tool.name)) continue;
+
   const isMergeOnly = !UPSTREAM_ALWAYS_VISIBLE.has(tool.name);
 
   let wrappedHandler: (args: Record<string, unknown>) => Promise<any>;
@@ -227,47 +290,49 @@ for (const tool of upstreamTools) {
 }
 
 // --- Resources ---
-server.registerResource(
-  "rule",
-  new ResourceTemplate("rule://{name}", {
-    list: async () => {
+if (!disabledGroups.has("rules")) {
+  server.registerResource(
+    "rule",
+    new ResourceTemplate("rule://{name}", {
+      list: async () => {
+        deprecationWatch.onResourcesUsed();
+        await resolveProjectRoot();
+        return {
+          resources: listAllRules(ctx.projectRoot).map((rule) => ({
+            uri: `rule://${rule.name}`,
+            name: rule.name,
+            description:
+              rule.description ||
+              `Project rule: ${rule.name} (inclusion: ${rule.inclusion})`,
+            mimeType: "text/markdown" as const,
+          })),
+        };
+      },
+    }),
+    {
+      title: "Project rule",
+      description: "A rule loaded from .rules/ in the consuming project",
+      mimeType: "text/markdown",
+    },
+    async (uri, { name }) => {
       deprecationWatch.onResourcesUsed();
       await resolveProjectRoot();
+      const rule = readRule(ctx.projectRoot, name as string);
+      if (!rule) {
+        throw new Error(`Rule not found: ${name}`);
+      }
       return {
-        resources: listAllRules(ctx.projectRoot).map((rule) => ({
-          uri: `rule://${rule.name}`,
-          name: rule.name,
-          description:
-            rule.description ||
-            `Project rule: ${rule.name} (inclusion: ${rule.inclusion})`,
-          mimeType: "text/markdown" as const,
-        })),
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: "text/markdown" as const,
+            text: rule.body,
+          },
+        ],
       };
     },
-  }),
-  {
-    title: "Project rule",
-    description: "A rule loaded from .rules/ in the consuming project",
-    mimeType: "text/markdown",
-  },
-  async (uri, { name }) => {
-    deprecationWatch.onResourcesUsed();
-    await resolveProjectRoot();
-    const rule = readRule(ctx.projectRoot, name as string);
-    if (!rule) {
-      throw new Error(`Rule not found: ${name}`);
-    }
-    return {
-      contents: [
-        {
-          uri: uri.href,
-          mimeType: "text/markdown" as const,
-          text: rule.body,
-        },
-      ],
-    };
-  },
-);
+  );
+}
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
