@@ -33,6 +33,7 @@ const PHASES = [
   "design",
   "tasks",
   "implementation",
+  "done",
 ] as const satisfies readonly SpecPhase[];
 
 interface ParsedTask {
@@ -41,6 +42,7 @@ interface ParsedTask {
   id: string;
   description: string;
   raw: string;
+  manual: boolean;
 }
 
 type GitCommitResult =
@@ -175,15 +177,35 @@ function gitCommit(
 }
 
 function parseTask(line: string): ParsedTask | null {
-  const match = line.match(/^(\s*)-\s*\[([ x])\]\s+(\d+(?:\.\d+)*)\.?\s+(.+)$/);
-  if (!match) return null;
-  return {
-    indent: match[1],
-    completed: match[2] === "x",
-    id: match[3],
-    description: match[4],
-    raw: line,
-  };
+  // Standard checkbox format: - [ ] 1. Description or - [x] 1.1 Description
+  const match = line.match(
+    /^(\s*)-\s*\[([\sx])\]\s+(\d+(?:\.\d+)*)\.?\s+(.+)$/,
+  );
+  if (match) {
+    const description = match[4];
+    const manual = /\[manual\]/i.test(description);
+    return {
+      indent: match[1],
+      completed: match[2] === "x",
+      id: match[3],
+      description,
+      raw: line,
+      manual,
+    };
+  }
+  // Header format: ## Task N: Description (treated as parent task)
+  const headerMatch = line.match(/^##\s+Task\s+(\d+)[:.]\s+(.+)$/);
+  if (headerMatch) {
+    return {
+      indent: "",
+      completed: false, // headers have no checkbox; derive from children
+      id: headerMatch[1],
+      description: headerMatch[2],
+      raw: line,
+      manual: /\[manual\]/i.test(headerMatch[2]),
+    };
+  }
+  return null;
 }
 
 function findTask(
@@ -192,11 +214,16 @@ function findTask(
 ): (ParsedTask & { lineIndex: number }) | null {
   const normalizedId = id.replace(/\.$/, "");
   const lines = tasksContent.split("\n");
+  let headerMatch: (ParsedTask & { lineIndex: number }) | null = null;
   for (let i = 0; i < lines.length; i++) {
     const t = parseTask(lines[i]);
-    if (t && t.id === normalizedId) return { ...t, lineIndex: i };
+    if (t && t.id === normalizedId) {
+      // Prefer checkbox-format lines over header-format lines
+      if (!t.raw.startsWith("##")) return { ...t, lineIndex: i };
+      if (!headerMatch) headerMatch = { ...t, lineIndex: i };
+    }
   }
-  return null;
+  return headerMatch;
 }
 
 function isParentTask(id: string): boolean {
@@ -309,6 +336,7 @@ export async function specStatus(
             design: "fill out design.md, then approve",
             tasks: "fill out tasks.md, then approve",
             implementation: "implement tasks",
+            done: "✓ complete",
           } as Record<SpecPhase, string>
         )[state.phase] || state.phase;
       return `  - ${s} [phase: ${state.phase}] — ${state.description || "no description"}\n    Next: ${nextAction}`;
@@ -345,8 +373,9 @@ export async function specStatus(
       `2. Use hierarchical IDs: "- [ ] 1. Parent" / "  - [ ] 1.1 Subtask"`,
       `3. Reference requirement numbers for traceability`,
       `4. Include checkpoint tasks at validation gates`,
-      `5. Show the user the tasks and ask "ready to approve?"`,
-      `6. When confirmed, call spec_approve(name: "${name}", phase: "tasks")`,
+      `5. Tag tasks requiring human action with [manual] — e.g. "- [ ] 6.1 Reconnect OAuth [manual]"`,
+      `6. Show the user the tasks and ask "ready to approve?"`,
+      `7. When confirmed, call spec_approve(name: "${name}", phase: "tasks")`,
       ``,
       `Do NOT advance without explicit user approval.`,
     ],
@@ -371,12 +400,17 @@ export async function specStatus(
       `- For parent tasks: complete all subtasks first, then complete the parent`,
       `- When auto-commit is enabled (default), completing a parent task automatically creates a git commit`,
       `- For checkpoints: ask the user to verify, wait for confirmation before marking complete`,
+      `- Tasks tagged [manual] require human action — skip them during automated implementation and note them for the user`,
       ``,
       `### 4. Orchestration pattern`,
       `- Find the next incomplete task(s) below`,
       `- Identify which tasks are independent (no dependency on each other) — these can be delegated in parallel`,
       `- Delegate implementation to sub-agents`,
       `- Review results, mark tasks complete, move to the next group`,
+    ],
+    done: [
+      `## Spec Complete ✅`,
+      `All tasks have been implemented and the spec is finished.`,
     ],
   };
 
@@ -393,7 +427,7 @@ export async function specStatus(
     `  - autoCommit: ${state.autoCommit !== false ? "✓ (enabled)" : "✗ (disabled)"}`,
   ];
 
-  if (state.phase === "implementation") {
+  if (state.phase === "implementation" || state.phase === "done") {
     const tasksFile = join(specPath(projectRoot, name), "tasks.md");
     if (existsSync(tasksFile)) {
       const content = readFileSync(tasksFile, "utf-8");
@@ -442,6 +476,7 @@ const PHASE_GUIDANCE: Record<SpecPhase, string> = {
   design: `Next: read and fill out design.md, then call spec_approve(name: "<name>", phase: "design") when ready.`,
   tasks: `Next: read and fill out tasks.md with implementation tasks, then call spec_approve(name: "<name>", phase: "tasks") when ready.`,
   implementation: `Next: implement the tasks. Use spec_task_complete to mark tasks done as you go.`,
+  done: `Spec is complete. No further action needed.`,
 };
 
 export async function specApprove(
@@ -492,14 +527,34 @@ export async function specTaskComplete(
   const tasksFile = join(specPath(projectRoot, name), "tasks.md");
   if (!existsSync(tasksFile)) return err(`tasks.md not found.`);
 
-  const content = readFileSync(tasksFile, "utf-8");
+  let content = readFileSync(tasksFile, "utf-8");
   const task = findTask(content, taskId);
   if (!task) return err(`Task '${taskId}' not found in tasks.md.`);
-  if (task.completed) return ok(`Task ${taskId} was already complete.`);
+  if (task.completed) {
+    // Even if the task is already complete, check whether all top-level tasks
+    // are done and the phase should transition (fixes stuck "implementation" phase)
+    if (isParentTask(taskId) && state.phase === "implementation") {
+      const allTasks = content
+        .split("\n")
+        .map(parseTask)
+        .filter((t): t is ParsedTask => t !== null);
+      const topLevel = allTasks.filter((t) => isParentTask(t.id));
+      const allDone = topLevel.every((t) => t.completed || t.manual);
+      if (allDone && topLevel.length > 0) {
+        state.phase = "done";
+        saveState(projectRoot, name, state);
+        return ok(
+          `Task ${taskId} was already complete.\n\n🎉 All tasks complete — spec '${name}' moved to phase: done.`,
+        );
+      }
+    }
+    return ok(`Task ${taskId} was already complete.`);
+  }
 
   if (isParentTask(taskId)) {
     const children = getChildTasks(content, taskId);
-    const incomplete = children.filter((c) => !c.completed);
+    // Filter out manual tasks — they don't block parent completion
+    const incomplete = children.filter((c) => !c.completed && !c.manual);
     if (incomplete.length > 0) {
       return err(
         `Cannot complete parent task '${taskId}' — ${incomplete.length} child task(s) still incomplete: ${incomplete.map((c) => c.id).join(", ")}`,
@@ -508,7 +563,18 @@ export async function specTaskComplete(
   }
 
   const lines = content.split("\n");
-  lines[task.lineIndex] = task.raw.replace(/\[ \]/, "[x]");
+  // Header-format tasks (## Task N:) have no checkbox to mark — they're
+  // implicitly complete when all children are done. We insert a checked
+  // checkbox line right after the header so the file reflects completion.
+  if (task.raw.startsWith("##")) {
+    lines.splice(
+      task.lineIndex + 1,
+      0,
+      `- [x] ${task.id}. ${task.description}`,
+    );
+  } else {
+    lines[task.lineIndex] = task.raw.replace(/\[ \]/, "[x]");
+  }
   writeFileSync(tasksFile, lines.join("\n"));
 
   let commitInfo = "";
@@ -521,7 +587,26 @@ export async function specTaskComplete(
     }
   }
 
-  return ok(`Marked task ${taskId} complete: ${task.description}${commitInfo}`);
+  // Check if all top-level tasks are now complete → transition to "done"
+  let phaseInfo = "";
+  if (isParentTask(taskId)) {
+    const updatedContent = readFileSync(tasksFile, "utf-8");
+    const allTasks = updatedContent
+      .split("\n")
+      .map(parseTask)
+      .filter((t): t is ParsedTask => t !== null);
+    const topLevel = allTasks.filter((t) => isParentTask(t.id));
+    const allDone = topLevel.every((t) => t.completed || t.manual);
+    if (allDone && topLevel.length > 0) {
+      state.phase = "done";
+      saveState(projectRoot, name, state);
+      phaseInfo = `\n\n🎉 All tasks complete — spec '${name}' moved to phase: done.`;
+    }
+  }
+
+  return ok(
+    `Marked task ${taskId} complete: ${task.description}${commitInfo}${phaseInfo}`,
+  );
 }
 
 export const specReadSchema = {

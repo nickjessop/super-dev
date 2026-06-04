@@ -38,7 +38,12 @@ export interface ToolDef {
 // Spec state (.specs/<name>/state.json)
 // ---------------------------------------------------------------------------
 
-export type SpecPhase = "requirements" | "design" | "tasks" | "implementation";
+export type SpecPhase =
+  | "requirements"
+  | "design"
+  | "tasks"
+  | "implementation"
+  | "done";
 
 export interface SpecState {
   phase: SpecPhase;

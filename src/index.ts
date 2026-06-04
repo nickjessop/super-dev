@@ -87,6 +87,13 @@ const server = new McpServer({
 
 let _resolvedProjectRoot: string | null = null;
 
+/**
+ * Whether we've successfully resolved a "good" project root (env var or
+ * roots/list). When false, resolveProjectRoot() will keep retrying
+ * roots/list on every tool call rather than caching a bad cwd fallback.
+ */
+let _rootIsConfirmed = false;
+
 function looksLikeProjectRoot(p: string): boolean {
   const markers = [
     ".git",
@@ -101,14 +108,23 @@ function looksLikeProjectRoot(p: string): boolean {
   return markers.some((m) => existsSync(join(p, m)));
 }
 
-async function resolveProjectRoot(): Promise<string> {
-  if (_resolvedProjectRoot) return _resolvedProjectRoot;
+function isUselessCwd(p: string): boolean {
+  return p === "/" || p === process.env.HOME;
+}
 
+async function resolveProjectRoot(): Promise<string> {
+  // If we have a confirmed-good root, return immediately.
+  if (_resolvedProjectRoot && _rootIsConfirmed) return _resolvedProjectRoot;
+
+  // 1. Env var — always trusted.
   if (process.env.SUPER_DEV_PROJECT_ROOT) {
     _resolvedProjectRoot = process.env.SUPER_DEV_PROJECT_ROOT;
+    _rootIsConfirmed = true;
     return _resolvedProjectRoot;
   }
 
+  // 2. MCP roots/list — retry on every call until it succeeds, because
+  //    the client may not be ready on the first attempt.
   try {
     const result = await server.server.listRoots();
     if (result?.roots?.length > 0) {
@@ -116,6 +132,7 @@ async function resolveProjectRoot(): Promise<string> {
       const rootPath = fileURLToPath(rootUri);
       if (existsSync(rootPath)) {
         _resolvedProjectRoot = rootPath;
+        _rootIsConfirmed = true;
         process.stderr.write(
           `[super-dev] project root resolved via MCP roots/list: ${rootPath}\n`,
         );
@@ -123,16 +140,22 @@ async function resolveProjectRoot(): Promise<string> {
       }
     }
   } catch {
-    // Client doesn't support roots/list
+    // Client doesn't support roots/list (yet) — will retry next call.
   }
 
+  // 3. Fallback to cwd — but refuse to use "/" or $HOME.
   const cwd = process.cwd();
-  if (cwd === "/" || cwd === process.env.HOME) {
-    process.stderr.write(
-      `[super-dev] WARNING: cwd is '${cwd}' which is unlikely to be a project root.\n` +
-        `  Set SUPER_DEV_PROJECT_ROOT or use a client that supports MCP roots/list.\n`,
+  if (isUselessCwd(cwd)) {
+    // Don't cache this — we want to retry roots/list on the next call.
+    throw new Error(
+      `Cannot determine project root. ` +
+        `cwd is '${cwd}' which is not a project directory. ` +
+        `Set SUPER_DEV_PROJECT_ROOT env var in your MCP server config ` +
+        `to the absolute path of your project.`,
     );
-  } else if (!looksLikeProjectRoot(cwd)) {
+  }
+
+  if (!looksLikeProjectRoot(cwd)) {
     process.stderr.write(
       `[super-dev] WARNING: cwd '${cwd}' does not look like a project root ` +
         `(no .git, package.json, etc.). Tools may write files in the wrong location.\n` +
@@ -141,11 +164,29 @@ async function resolveProjectRoot(): Promise<string> {
   }
 
   _resolvedProjectRoot = cwd;
+  _rootIsConfirmed = true;
   return _resolvedProjectRoot;
 }
 
 if (process.env.SUPER_DEV_PROJECT_ROOT) {
   _resolvedProjectRoot = process.env.SUPER_DEV_PROJECT_ROOT;
+  _rootIsConfirmed = true;
+}
+
+/** Try to resolve the project root; returns an error ToolResult on failure, or null on success. */
+async function ensureProjectRoot(): Promise<{
+  content: [{ type: "text"; text: string }];
+  isError: true;
+} | null> {
+  try {
+    await resolveProjectRoot();
+    return null;
+  } catch (e: any) {
+    return {
+      content: [{ type: "text" as const, text: e.message }],
+      isError: true,
+    };
+  }
 }
 
 const ctx: AppContext = {
@@ -255,7 +296,8 @@ for (const tool of [...specTools, ...rulesTools]) {
       inputSchema: tool.schema,
     },
     async (args) => {
-      await resolveProjectRoot();
+      const rootErr = await ensureProjectRoot();
+      if (rootErr) return rootErr;
       const result = await tool.handler(args as Record<string, unknown>, ctx);
       if (needsVisibilitySync) syncAnalyzeVisibility();
       return result as any;
@@ -273,7 +315,8 @@ if (isToolEnabled("spec_analyze")) {
       inputSchema: specAnalyzeSchema,
     },
     async (args) => {
-      await resolveProjectRoot();
+      const rootErr = await ensureProjectRoot();
+      if (rootErr) return rootErr;
       return specAnalyze(args as { name: string }, ctx) as any;
     },
   );
@@ -303,7 +346,8 @@ for (const tool of upstreamTools) {
   let wrappedHandler: (args: Record<string, unknown>) => Promise<any>;
   if (tool.name === "upstream_status") {
     wrappedHandler = async (args) => {
-      await resolveProjectRoot();
+      const rootErr = await ensureProjectRoot();
+      if (rootErr) return rootErr;
       syncMergeToolVisibility();
       const result = await tool.handler(args as Record<string, unknown>, ctx);
       // If start_merge was used, enable merge tools
@@ -315,14 +359,16 @@ for (const tool of upstreamTools) {
     tool.name === "upstream_abort"
   ) {
     wrappedHandler = async (args) => {
-      await resolveProjectRoot();
+      const rootErr = await ensureProjectRoot();
+      if (rootErr) return rootErr;
       const result = await tool.handler(args, ctx);
       disableMergeTools();
       return result;
     };
   } else {
     wrappedHandler = async (args) => {
-      await resolveProjectRoot();
+      const rootErr = await ensureProjectRoot();
+      if (rootErr) return rootErr;
       return tool.handler(args, ctx);
     };
   }
