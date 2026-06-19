@@ -26,7 +26,7 @@ Super Dev is an [MCP server](https://modelcontextprotocol.io/) that plugs into *
 ## Quick Start
 
 ```bash
-git clone https://github.com/inkbitco/super-dev.git
+git clone https://github.com/nickjessop/super-dev.git
 cd super-dev
 npm install
 ```

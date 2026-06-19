@@ -5,7 +5,7 @@ Thanks for your interest in contributing! This is an MCP server that gives AI co
 ## Quick Start
 
 ```bash
-git clone https://github.com/inkbitco/super-dev.git
+git clone https://github.com/nickjessop/super-dev.git
 cd super-dev
 npm install
 npm run build   # compiles TypeScript → dist/
@@ -95,7 +95,7 @@ Small PRs are easier to review. If you're planning something big, open an issue 
 
 ## Reporting Bugs & Requesting Features
 
-Use [GitHub Issues](https://github.com/inkbitco/super-dev/issues). Include:
+Use [GitHub Issues](https://github.com/nickjessop/super-dev/issues).
 
 - **Bugs**: what happened, what you expected, steps to reproduce, and your Node/npm versions
 - **Feature requests**: the problem you're solving and any ideas for the approach
