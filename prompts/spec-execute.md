@@ -26,12 +26,13 @@ Before proceeding, check:
 
 Review the task list. Identify:
 - **Completed tasks** — already marked `[x]`, skip these
-- **Next incomplete tasks** — the ones to work on now
+- **Next incomplete Agent Tasks** — the ones for you to work on now
+- **User Actions** — these are just reference notes for the user (no checkboxes); ignore them during execution
 - **Independent tasks** — tasks with no dependency on each other (can run in parallel)
 - **Dependent tasks** — tasks that must wait for others to finish first
 
 Present a brief summary:
-> "Spec `xyz`: 4/12 tasks complete. Next up: tasks 2.1, 2.2 (parallel), then 2.3 (depends on 2.1). Ready to start?"
+> "Spec `xyz`: 4/12 agent tasks complete. Next up: tasks 2.1, 2.2 (parallel), then 2.3 (depends on 2.1). Ready to start?"
 
 Wait for my confirmation before executing.
 
@@ -65,8 +66,7 @@ Move to the next wave of tasks. Continue until all tasks are complete or you hit
 ## Special task types
 
 - **"Run: <command>"** — execute the command yourself, don't delegate
-- **"Ask user to run X"** — ask me, wait for confirmation
-- **Checkpoints** (e.g. "Checkpoint — verify tests pass") — ask me to verify, wait for my confirmation before marking complete
+- **User Actions section** — ignore this section; it contains reference notes for the user, not tasks to execute
 
 ## Rules
 

@@ -177,9 +177,9 @@ function gitCommit(
 }
 
 function parseTask(line: string): ParsedTask | null {
-  // Standard checkbox format: - [ ] 1. Description or - [x] 1.1 Description
+  // Checkbox format: - [ ] 1. Description or - [x] 1.1 Description or - [ ] U1. Description
   const match = line.match(
-    /^(\s*)-\s*\[([\sx])\]\s+(\d+(?:\.\d+)*)\.?\s+(.+)$/,
+    /^(\s*)-\s*\[([\sx])\]\s+([Uu]?\d+(?:\.\d+)*)\.?\s+(.+)$/,
   );
   if (match) {
     const description = match[4];
@@ -193,8 +193,8 @@ function parseTask(line: string): ParsedTask | null {
       manual,
     };
   }
-  // Header format: ## Task N: Description (treated as parent task)
-  const headerMatch = line.match(/^##\s+Task\s+(\d+)[:.]\s+(.+)$/);
+  // Header format: ## Task N: Description (treated as parent task) where N is numeric or U-prefixed
+  const headerMatch = line.match(/^##\s+Task\s+([Uu]?\d+)[:.]\s+(.+)$/);
   if (headerMatch) {
     return {
       indent: "",
@@ -293,7 +293,7 @@ export async function specCreate(
 
   writeFileSync(
     join(dir, "tasks.md"),
-    `# Implementation Tasks: ${name}\n\nFill this in after design is approved. Format:\n\n- [ ] 1. Parent task name\n  - [ ] 1.1 Subtask description\n  - [ ] 1.2 Another subtask\n`,
+    `# Implementation Tasks: ${name}\n\nFill this in after design is approved. Format:\n\n## Agent Tasks\n\nTasks that an LLM/agent can complete autonomously (code changes, file operations, automated tests, git commits).\n\n- [ ] 1. Parent task name\n  - [ ] 1.1 Subtask description\n  - [ ] 1.2 Another subtask\n\n## User Actions\n\nManual steps for the user to complete outside this spec (manual testing, approvals, production deployments, etc.). These are reference notes, not tracked tasks.\n\n- Action description\n- Another action\n`,
   );
 
   saveState(projectRoot, name, {
@@ -369,13 +369,14 @@ export async function specStatus(
     ],
     tasks: [
       `## Next Steps`,
-      `1. Edit .specs/${name}/tasks.md — break the design into ordered, atomic tasks`,
-      `2. Use hierarchical IDs: "- [ ] 1. Parent" / "  - [ ] 1.1 Subtask"`,
-      `3. Reference requirement numbers for traceability`,
-      `4. Include checkpoint tasks at validation gates`,
-      `5. Tag tasks requiring human action with [manual] — e.g. "- [ ] 6.1 Reconnect OAuth [manual]"`,
-      `6. Show the user the tasks and ask "ready to approve?"`,
-      `7. When confirmed, call spec_approve(name: "${name}", phase: "tasks")`,
+      `1. Edit .specs/${name}/tasks.md — break the design into two sections:`,
+      `   - **Agent Tasks**: tasks an LLM/agent can complete autonomously (code, tests, docs)`,
+      `   - **User Actions**: manual steps for the user (reference notes, not tracked tasks)`,
+      `2. Use hierarchical IDs for Agent Tasks: "- [ ] 1. Parent" / "  - [ ] 1.1 Subtask"`,
+      `3. Format User Actions as bullet list: "- Action description"`,
+      `4. Reference requirement numbers for traceability`,
+      `5. Show the user the tasks and ask "ready to approve?"`,
+      `6. When confirmed, call spec_approve(name: "${name}", phase: "tasks")`,
       ``,
       `Do NOT advance without explicit user approval.`,
     ],
@@ -399,8 +400,7 @@ export async function specStatus(
       `- NEVER skip any tasks. Complete every task in order, including commit-related tasks.`,
       `- For parent tasks: complete all subtasks first, then complete the parent`,
       `- When auto-commit is enabled (default), completing a parent task automatically creates a git commit`,
-      `- For checkpoints: ask the user to verify, wait for confirmation before marking complete`,
-      `- Tasks tagged [manual] require human action — skip them during automated implementation and note them for the user`,
+      `- **User Actions section** — ignore this section; it contains reference notes for the user, not tasks`,
       ``,
       `### 4. Orchestration pattern`,
       `- Find the next incomplete task(s) below`,
@@ -435,9 +435,13 @@ export async function specStatus(
         .split("\n")
         .map(parseTask)
         .filter((t): t is ParsedTask => t !== null);
+
       const total = tasks.length;
       const done = tasks.filter((t) => t.completed).length;
-      lines.push(``, `Tasks: ${done}/${total} complete`);
+
+      if (total > 0) {
+        lines.push(``, `Tasks: ${done}/${total} complete`);
+      }
     }
   }
 

@@ -111,16 +111,42 @@ Reference specific requirement numbers for traceability.
 ### 3. Tasks Phase
 
 - Read and edit `.specs/<name>/tasks.md`
-- Break the design into ordered, atomic tasks
-- Format with hierarchical IDs:
-  ```
-  - [ ] 1. Parent task name
-    - [ ] 1.1 Subtask description (Requirements: 1.2, 3.4)
-    - [ ] 1.2 Subtask description
-  ```
-- Each subtask should be completable in a single focused step
+- Break the design into two sections:
+
+#### Agent Tasks
+Tasks that an LLM/agent can complete autonomously:
+- Code changes, file creation/edits
+- Automated tests (unit, integration, e2e)
+- Git commits (handled automatically by `spec_task_complete`)
+- Running build commands, linters, type checkers
+- Generating documentation
+
+Format with hierarchical IDs:
+```
+- [ ] 1. Parent task name
+  - [ ] 1.1 Subtask description (Requirements: 1.2, 3.4)
+  - [ ] 1.2 Subtask description
+```
+
+Each subtask should be completable in a single focused step by an agent.
+
+#### User Actions
+Manual steps for the user to complete outside this spec:
+- Manual testing or QA verification
+- External tool access (browser DevTools, production dashboards, third-party services)
+- Production deployments or environment changes
+- User approvals or sign-offs
+- Running commands that require interactive input
+
+Format as simple bullet list (no checkboxes or IDs):
+```
+- Action description
+- Another action
+```
+
+These are reference notes for the user, not tracked tasks.
+
 - Reference requirement numbers in subtasks for traceability
-- Include checkpoint tasks at logical validation gates (e.g. "Checkpoint — typecheck passes, tests pass")
 - **Show me the tasks and ask for approval.**
 - When I confirm, call `spec_approve({ name, phase: "tasks" })`
 
@@ -146,8 +172,7 @@ Reference specific requirement numbers for traceability.
 
 **Special task types:**
 - If a task says "Run: <command>" → execute the command yourself (don't tell me to run it)
-- If a task says "Ask user to run X" → ask me, then wait for my confirmation
-- Checkpoints (e.g. "Checkpoint — verify tests pass") → ask me to verify, wait for confirmation before marking complete
+- **User Actions (U1, U2, etc.)** — skip these; they're tracked separately for manual steps
 
 ## Critical Rules
 
@@ -155,7 +180,7 @@ Reference specific requirement numbers for traceability.
 
 - Code task → write the code, then mark complete
 - Git task → execute the git commands, then mark complete (the parent auto-commit handles most of these)
-- Checkpoint → wait for my confirmation, then mark complete
+- User Actions → skip these; don't try to execute them
 
 **Don't skip phases.** The tools enforce requirements → design → tasks → implementation. `spec_approve` will refuse to advance out of order.
 
@@ -174,6 +199,6 @@ Reference specific requirement numbers for traceability.
 - ❌ Skipping the user approval step at phase boundaries
 - ❌ Manually running `git commit` (the tool handles it)
 - ❌ Bundling multiple parent tasks into one commit
-- ❌ Assuming a checkpoint passed without my confirmation
+- ❌ Trying to execute User Actions (U1, U2, etc.) — skip these
 
 Begin by asking me what feature I want to plan. Then pressure-test the idea before scaffolding anything.
