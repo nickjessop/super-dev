@@ -518,6 +518,31 @@ async function upstreamCategorizeChanges(
     diffStat?: string;
   }
 
+  // Pre-fetch all diff stats in one command (much faster than per-file)
+  let diffStatsMap: Map<string, string> = new Map();
+  if (include_diff_stats && allChangedFiles.length > 0) {
+    try {
+      console.error(`[upstream_categorize_changes] Getting diff stats for ${allChangedFiles.length} files...`);
+      const allStats = git(
+        `git diff --stat HEAD ${state.remote}/${state.remoteBranch}`,
+        projectRoot,
+      );
+      // Parse the output to extract per-file stats
+      // Format: "  path/to/file | 10 +++++-----"
+      const lines = allStats.split("\n");
+      for (const line of lines) {
+        const match = line.match(/^\s+(.+?)\s+\|\s+(\d+\s+[+\-]+)/);
+        if (match) {
+          const filePath = match[1].trim();
+          const stat = match[2].trim();
+          diffStatsMap.set(filePath, stat);
+        }
+      }
+    } catch (e) {
+      console.error(`[upstream_categorize_changes] Warning: Could not get diff stats: ${e}`);
+    }
+  }
+
   const grouped: Record<string, ChangeEntry[]> = {};
   const uncategorized: ChangeEntry[] = [];
   let autoResolvable = 0;
@@ -530,16 +555,9 @@ async function upstreamCategorizeChanges(
 
     const entry: ChangeEntry = { file, policy, isConflicted };
 
+    // Use pre-fetched diff stats
     if (include_diff_stats) {
-      try {
-        const stat = git(
-          `git diff --stat HEAD ${state.remote}/${state.remoteBranch} -- ${file}`,
-          projectRoot,
-        );
-        entry.diffStat = stat;
-      } catch {
-        entry.diffStat = "(unable to get diff)";
-      }
+      entry.diffStat = diffStatsMap.get(file) || "(no changes)";
     }
 
     if (category) {
