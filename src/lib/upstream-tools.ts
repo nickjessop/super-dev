@@ -282,8 +282,8 @@ async function upstreamStatus(
         git(`git remote add ${remote} ${remote_url}`, projectRoot);
       }
 
-      console.error(`[upstream_status] Fetching ${remote}/${branch}...`);
-      git(`git fetch ${remote} ${branch} --depth=100`, projectRoot);
+      // Note: We don't fetch here to keep init fast.
+      // The fetch will happen during the status check.
 
       const config: UpstreamConfig = {
         remote,
@@ -312,7 +312,8 @@ async function upstreamStatus(
           `Remote: ${remote} → ${remote_url}${remoteExists ? " (already existed)" : ""}\n` +
           `Branch: ${branch}\n` +
           `Config written to: .upstream/config.json\n\n` +
-          `✅ .upstream/.gitignore created (merge-state.json will be ignored)`,
+          `✅ .upstream/.gitignore created (merge-state.json will be ignored)\n\n` +
+          `Next step: Run upstream_status (without remote_url) to fetch and check upstream status.`,
       );
     } catch (e: unknown) {
       return err(
