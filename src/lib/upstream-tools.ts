@@ -6,7 +6,7 @@ import {
   mkdirSync,
   unlinkSync,
 } from "fs";
-import { join } from "path";
+import { join, dirname } from "path";
 import { z } from "zod";
 import {
   ToolDef,
@@ -19,25 +19,111 @@ import {
   err,
 } from "../types.js";
 
+// --- Upstream directory and file paths ---
+const UPSTREAM_DIR = ".upstream";
+const CONFIG_FILE = "config.json";
+const MERGE_STATE_FILE = "merge-state.json";
+const GITIGNORE_FILE = ".gitignore";
+
+// --- Legacy paths (for backward compatibility) ---
+const LEGACY_CONFIG_FILE = ".upstream.json";
+const LEGACY_MERGE_STATE_FILE = ".upstream-merge-state.json";
+
+function getUpstreamDir(projectRoot: string): string {
+  return join(projectRoot, UPSTREAM_DIR);
+}
+
+function getConfigPath(projectRoot: string): string {
+  return join(getUpstreamDir(projectRoot), CONFIG_FILE);
+}
+
+function getMergeStatePath(projectRoot: string): string {
+  return join(getUpstreamDir(projectRoot), MERGE_STATE_FILE);
+}
+
+function ensureUpstreamDir(projectRoot: string): void {
+  const dir = getUpstreamDir(projectRoot);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+}
+
+function createUpstreamGitignore(projectRoot: string): void {
+  const gitignorePath = join(getUpstreamDir(projectRoot), GITIGNORE_FILE);
+  if (!existsSync(gitignorePath)) {
+    writeFileSync(gitignorePath, `${MERGE_STATE_FILE}\n`);
+  }
+}
+
+function migrateFromLegacy(projectRoot: string): void {
+  // Migrate .upstream.json to .upstream/config.json
+  const legacyConfig = join(projectRoot, LEGACY_CONFIG_FILE);
+  if (existsSync(legacyConfig)) {
+    ensureUpstreamDir(projectRoot);
+    const config = JSON.parse(readFileSync(legacyConfig, "utf-8"));
+    writeFileSync(getConfigPath(projectRoot), JSON.stringify(config, null, 2) + "\n");
+    unlinkSync(legacyConfig);
+    console.error(`[upstream] Migrated ${LEGACY_CONFIG_FILE} to ${UPSTREAM_DIR}/${CONFIG_FILE}`);
+  }
+
+  // Migrate .upstream-merge-state.json to .upstream/merge-state.json
+  const legacyState = join(projectRoot, LEGACY_MERGE_STATE_FILE);
+  if (existsSync(legacyState)) {
+    ensureUpstreamDir(projectRoot);
+    const state = JSON.parse(readFileSync(legacyState, "utf-8"));
+    writeFileSync(getMergeStatePath(projectRoot), JSON.stringify(state, null, 2) + "\n");
+    unlinkSync(legacyState);
+    console.error(`[upstream] Migrated ${LEGACY_MERGE_STATE_FILE} to ${UPSTREAM_DIR}/${MERGE_STATE_FILE}`);
+  }
+}
+
 function loadConfig(projectRoot: string): UpstreamConfig | null {
-  const configPath = join(projectRoot, ".upstream.json");
-  if (!existsSync(configPath)) return null;
-  return JSON.parse(readFileSync(configPath, "utf-8")) as UpstreamConfig;
+  // Try new location first
+  const configPath = getConfigPath(projectRoot);
+  if (existsSync(configPath)) {
+    return JSON.parse(readFileSync(configPath, "utf-8")) as UpstreamConfig;
+  }
+
+  // Check for legacy location and migrate
+  const legacyConfig = join(projectRoot, LEGACY_CONFIG_FILE);
+  if (existsSync(legacyConfig)) {
+    migrateFromLegacy(projectRoot);
+    return JSON.parse(readFileSync(configPath, "utf-8")) as UpstreamConfig;
+  }
+
+  return null;
+}
+
+function saveConfig(projectRoot: string, config: UpstreamConfig): void {
+  ensureUpstreamDir(projectRoot);
+  createUpstreamGitignore(projectRoot);
+  writeFileSync(getConfigPath(projectRoot), JSON.stringify(config, null, 2) + "\n");
 }
 
 function loadMergeState(projectRoot: string): MergeState | null {
-  const statePath = join(projectRoot, ".upstream-merge-state.json");
-  if (!existsSync(statePath)) return null;
-  return JSON.parse(readFileSync(statePath, "utf-8")) as MergeState;
+  // Try new location first
+  const statePath = getMergeStatePath(projectRoot);
+  if (existsSync(statePath)) {
+    return JSON.parse(readFileSync(statePath, "utf-8")) as MergeState;
+  }
+
+  // Check for legacy location and migrate
+  const legacyState = join(projectRoot, LEGACY_MERGE_STATE_FILE);
+  if (existsSync(legacyState)) {
+    migrateFromLegacy(projectRoot);
+    return JSON.parse(readFileSync(statePath, "utf-8")) as MergeState;
+  }
+
+  return null;
 }
 
 function saveMergeState(projectRoot: string, state: MergeState): void {
-  const statePath = join(projectRoot, ".upstream-merge-state.json");
-  writeFileSync(statePath, JSON.stringify(state, null, 2) + "\n");
+  ensureUpstreamDir(projectRoot);
+  writeFileSync(getMergeStatePath(projectRoot), JSON.stringify(state, null, 2) + "\n");
 }
 
 function removeMergeState(projectRoot: string): void {
-  const statePath = join(projectRoot, ".upstream-merge-state.json");
+  const statePath = getMergeStatePath(projectRoot);
   if (existsSync(statePath)) {
     unlinkSync(statePath);
   }
@@ -120,6 +206,7 @@ function git(
       encoding: "utf-8",
       stdio: "pipe",
       maxBuffer: 10 * 1024 * 1024,
+      timeout: 60_000, // 60 second timeout
       ...opts,
     }) as string
   ).trim();
@@ -131,7 +218,7 @@ const upstreamStatusSchema = {
     .string()
     .optional()
     .describe(
-      "Git URL of the upstream repository. Provide this to initialize upstream config (.upstream.json). Only needed once.",
+      "Git URL of the upstream repository. Provide this to initialize upstream config (.upstream/config.json). Only needed once.",
     ),
   remote: z.string().optional().describe("Git remote name (default: upstream)"),
   branch: z
@@ -195,7 +282,8 @@ async function upstreamStatus(
         git(`git remote add ${remote} ${remote_url}`, projectRoot);
       }
 
-      git(`git fetch ${remote}`, projectRoot);
+      console.error(`[upstream_status] Fetching ${remote}/${branch}...`);
+      git(`git fetch ${remote} ${branch} --depth=100`, projectRoot);
 
       const config: UpstreamConfig = {
         remote,
@@ -217,15 +305,14 @@ async function upstreamStatus(
         },
       };
 
-      const configPath = join(projectRoot, ".upstream.json");
-      writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
+      saveConfig(projectRoot, config);
 
       return ok(
         `Upstream configured successfully!\n\n` +
           `Remote: ${remote} → ${remote_url}${remoteExists ? " (already existed)" : ""}\n` +
           `Branch: ${branch}\n` +
-          `Config written to: .upstream.json\n\n` +
-          `Suggestion: Add .upstream-merge-state.json to your .gitignore`,
+          `Config written to: .upstream/config.json\n\n` +
+          `✅ .upstream/.gitignore created (merge-state.json will be ignored)`,
       );
     } catch (e: unknown) {
       return err(
@@ -238,7 +325,7 @@ async function upstreamStatus(
   const config = loadConfig(projectRoot);
   if (!config) {
     return err(
-      "No .upstream.json found. Call upstream_status with remote_url to configure your upstream remote.",
+      "No upstream config found. Call upstream_status with remote_url to configure your upstream remote.",
     );
   }
 
@@ -254,6 +341,9 @@ async function upstreamStatus(
         );
       }
 
+      console.error(`[upstream_status] Fetching latest from ${remote}/${branch}...`);
+      git(`git fetch ${remote} ${branch}`, projectRoot);
+
       const previousBranch = git("git branch --show-current", projectRoot);
 
       const timestamp = new Date()
@@ -262,8 +352,10 @@ async function upstreamStatus(
         .replace(/\..+/, "");
       const mergeBranch = `upstream-merge-${timestamp}`;
 
+      console.error(`[upstream_status] Creating merge branch ${mergeBranch}...`);
       git(`git checkout -b ${mergeBranch}`, projectRoot);
 
+      console.error(`[upstream_status] Merging ${remote}/${branch}...`);
       let hasConflicts = false;
       try {
         git(`git merge ${remote}/${branch} --no-commit --no-ff`, projectRoot);
@@ -343,7 +435,8 @@ async function upstreamStatus(
 
   // --- Default: status mode ---
   try {
-    git(`git fetch ${remote}`, projectRoot);
+    console.error(`[upstream_status] Fetching ${remote}/${branch}...`);
+    git(`git fetch ${remote} ${branch}`, projectRoot);
 
     const behind = parseInt(
       git(`git rev-list --count HEAD..${remote}/${branch}`, projectRoot) || "0",
@@ -411,7 +504,7 @@ async function upstreamCategorizeChanges(
 
   const config = loadConfig(projectRoot);
   if (!config) {
-    return err("No .upstream.json found.");
+    return err("No upstream config found.");
   }
 
   const { allChangedFiles, conflicts } = state;
@@ -577,7 +670,7 @@ async function upstreamResolveBatch(
 
   const config = loadConfig(projectRoot);
   if (!config) {
-    return err("No .upstream.json found.");
+    return err("No upstream config found.");
   }
 
   let targetFiles: string[] = [];
@@ -649,7 +742,7 @@ async function upstreamDiffFile(
   const state = loadMergeState(projectRoot);
   const config = loadConfig(projectRoot);
   if (!config) {
-    return err("No .upstream.json found.");
+    return err("No upstream config found.");
   }
 
   const { remote, branch } = config;

@@ -252,8 +252,12 @@ function disableMergeTools(): void {
 }
 
 function syncMergeToolVisibility(): void {
-  const stateFile = join(ctx.projectRoot, ".upstream-merge-state.json");
-  if (existsSync(stateFile)) {
+  // Check new location first
+  const newStateFile = join(ctx.projectRoot, ".upstream", "merge-state.json");
+  // Also check legacy location for backward compatibility
+  const legacyStateFile = join(ctx.projectRoot, ".upstream-merge-state.json");
+  
+  if (existsSync(newStateFile) || existsSync(legacyStateFile)) {
     enableMergeTools();
   }
 }

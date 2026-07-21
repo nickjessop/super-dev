@@ -59,7 +59,7 @@ export interface SpecState {
 }
 
 // ---------------------------------------------------------------------------
-// Upstream config (.upstream.json)
+// Upstream config (.upstream/config.json)
 // ---------------------------------------------------------------------------
 
 export interface UpstreamPolicies {
@@ -76,7 +76,7 @@ export interface UpstreamConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Upstream merge state (.upstream-merge-state.json)
+// Upstream merge state (.upstream/merge-state.json)
 // ---------------------------------------------------------------------------
 
 export interface MergeState {
