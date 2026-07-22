@@ -235,32 +235,6 @@ for (const file of promptFiles) {
 }
 
 // --- Tools ---
-const UPSTREAM_ALWAYS_VISIBLE = new Set(["upstream_status"]);
-const mergeToolHandles: Array<{ enable(): void; disable(): void }> = [];
-let _mergeToolsEnabled = false;
-
-function enableMergeTools(): void {
-  if (_mergeToolsEnabled) return;
-  _mergeToolsEnabled = true;
-  for (const handle of mergeToolHandles) handle.enable();
-}
-
-function disableMergeTools(): void {
-  if (!_mergeToolsEnabled) return;
-  _mergeToolsEnabled = false;
-  for (const handle of mergeToolHandles) handle.disable();
-}
-
-function syncMergeToolVisibility(): void {
-  // Check new location first
-  const newStateFile = join(ctx.projectRoot, ".upstream", "merge-state.json");
-  // Also check legacy location for backward compatibility
-  const legacyStateFile = join(ctx.projectRoot, ".upstream-merge-state.json");
-  
-  if (existsSync(newStateFile) || existsSync(legacyStateFile)) {
-    enableMergeTools();
-  }
-}
 
 // --- spec_analyze: dynamic visibility (hidden until a spec is in requirements phase) ---
 const PHASE_CHANGING_SPEC_TOOLS = new Set([
@@ -345,39 +319,13 @@ for (const tool of [...threadHistoryTools, ...ttsTools]) {
 for (const tool of upstreamTools) {
   if (!isToolEnabled(tool.name)) continue;
 
-  const isMergeOnly = !UPSTREAM_ALWAYS_VISIBLE.has(tool.name);
+  let wrappedHandler: (args: Record<string, unknown>) => Promise<any> = async (args) => {
+    const rootErr = await ensureProjectRoot();
+    if (rootErr) return rootErr;
+    return tool.handler(args, ctx);
+  };
 
-  let wrappedHandler: (args: Record<string, unknown>) => Promise<any>;
-  if (tool.name === "upstream_status") {
-    wrappedHandler = async (args) => {
-      const rootErr = await ensureProjectRoot();
-      if (rootErr) return rootErr;
-      syncMergeToolVisibility();
-      const result = await tool.handler(args as Record<string, unknown>, ctx);
-      // If start_merge was used, enable merge tools
-      if (args.start_merge) enableMergeTools();
-      return result;
-    };
-  } else if (
-    tool.name === "upstream_complete" ||
-    tool.name === "upstream_abort"
-  ) {
-    wrappedHandler = async (args) => {
-      const rootErr = await ensureProjectRoot();
-      if (rootErr) return rootErr;
-      const result = await tool.handler(args, ctx);
-      disableMergeTools();
-      return result;
-    };
-  } else {
-    wrappedHandler = async (args) => {
-      const rootErr = await ensureProjectRoot();
-      if (rootErr) return rootErr;
-      return tool.handler(args, ctx);
-    };
-  }
-
-  const handle = server.registerTool(
+  server.registerTool(
     tool.name,
     {
       description: tool.description,
@@ -385,11 +333,6 @@ for (const tool of upstreamTools) {
     },
     wrappedHandler,
   );
-
-  if (isMergeOnly) {
-    handle.disable();
-    mergeToolHandles.push(handle);
-  }
 }
 
 // --- Resources ---

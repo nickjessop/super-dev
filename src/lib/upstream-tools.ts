@@ -1,4 +1,5 @@
-import { execSync, ExecSyncOptions } from "child_process";
+import { execSync, exec, ExecOptions } from "child_process";
+import { promisify } from "util";
 import {
   existsSync,
   readFileSync,
@@ -195,21 +196,45 @@ function getPolicyForFile(
   return null;
 }
 
-function git(
+// Helper to wrap file paths in quotes for shell commands
+function escapePath(filePath: string): string {
+  // Wrap in single quotes, escaping any existing single quotes
+  return `'${filePath.replace(/'/g, "'\\''")}'`;
+}
+
+const execAsync = promisify(exec);
+
+async function git(
   cmd: string,
   projectRoot: string,
-  opts: ExecSyncOptions = {},
-): string {
-  return (
-    execSync(cmd, {
-      cwd: projectRoot,
-      encoding: "utf-8",
-      stdio: "pipe",
-      maxBuffer: 10 * 1024 * 1024,
-      timeout: 60_000, // 60 second timeout
-      ...opts,
-    }) as string
-  ).trim();
+  opts: ExecOptions = {},
+): Promise<string> {
+  let MAX_RETRIES = 3;
+  let attempt = 0;
+
+  while (attempt < MAX_RETRIES) {
+    try {
+      const { stdout } = await execAsync(cmd, {
+        cwd: projectRoot,
+        maxBuffer: 10 * 1024 * 1024,
+        timeout: 60_000, // 60 second timeout
+        ...opts,
+      });
+      return String(stdout).trim();
+    } catch (e: any) {
+      const errorStr = String(e.stderr || e.message || e);
+      if (errorStr.includes(".git/index.lock")) {
+        attempt++;
+        if (attempt >= MAX_RETRIES) throw e;
+        // Non-blocking backoff: 500ms, 1000ms, ...
+        const delay = attempt * 500;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+      throw e;
+    }
+  }
+  return ""; // Unreachable
 }
 
 const upstreamStatusSchema = {
@@ -272,14 +297,14 @@ async function upstreamStatus(
     try {
       let remoteExists = false;
       try {
-        git(`git remote get-url ${remote}`, projectRoot);
+        await git(`git remote get-url ${remote}`, projectRoot);
         remoteExists = true;
       } catch {
         // Remote doesn't exist
       }
 
       if (!remoteExists) {
-        git(`git remote add ${remote} ${remote_url}`, projectRoot);
+        await git(`git remote add ${remote} ${remote_url}`, projectRoot);
       }
 
       // Note: We don't fetch here to keep init fast.
@@ -335,7 +360,7 @@ async function upstreamStatus(
   // --- Merge start mode ---
   if (start_merge) {
     try {
-      const status = git("git status --porcelain", projectRoot);
+      const status = await git("git status --porcelain", projectRoot);
       if (status) {
         return err(
           `Working tree is not clean. Please commit or stash changes first.\n\nDirty files:\n${status}`,
@@ -343,9 +368,9 @@ async function upstreamStatus(
       }
 
       console.error(`[upstream_status] Fetching latest from ${remote}/${branch}...`);
-      git(`git fetch ${remote} ${branch}`, projectRoot);
+      await git(`git fetch ${remote} ${branch}`, projectRoot);
 
-      const previousBranch = git("git branch --show-current", projectRoot);
+      const previousBranch = await git("git branch --show-current", projectRoot);
 
       const timestamp = new Date()
         .toISOString()
@@ -354,19 +379,19 @@ async function upstreamStatus(
       const mergeBranch = `upstream-merge-${timestamp}`;
 
       console.error(`[upstream_status] Creating merge branch ${mergeBranch}...`);
-      git(`git checkout -b ${mergeBranch}`, projectRoot);
+      await git(`git checkout -b ${mergeBranch}`, projectRoot);
 
       console.error(`[upstream_status] Merging ${remote}/${branch}...`);
       let hasConflicts = false;
       try {
-        git(`git merge ${remote}/${branch} --no-commit --no-ff`, projectRoot);
+        await git(`git merge ${remote}/${branch} --no-commit --no-ff`, projectRoot);
       } catch {
         hasConflicts = true;
       }
 
       let conflicts: string[] = [];
       try {
-        const conflictOutput = git(
+        const conflictOutput = await git(
           "git diff --name-only --diff-filter=U",
           projectRoot,
         );
@@ -379,7 +404,7 @@ async function upstreamStatus(
 
       let allChangedFiles: string[] = [];
       try {
-        const changedOutput = git(
+        const changedOutput = await git(
           `git diff --name-only HEAD ${remote}/${branch}`,
           projectRoot,
         );
@@ -420,13 +445,10 @@ async function upstreamStatus(
           if (policy) output += ` (policy: ${policy})`;
           output += `\n`;
         }
-        output += `\n**NOTE:** The upstream merge tools (upstream_categorize_changes, upstream_resolve_batch, etc.) have now been dynamically exposed.`;
-        output += `\nIf you get a 'tool not found' error, your editor has not yet refreshed the tool list. Ask the user to restart the MCP server or wait a moment.`;
         output += `\n\nUse upstream_categorize_changes for a full breakdown.`;
         output += `\nUse upstream_resolve_batch to auto-resolve files with policies.`;
       } else {
         output += `\n✅ No conflicts! You can run upstream_verify and then upstream_complete.`;
-        output += `\n**NOTE:** The upstream merge tools have now been dynamically exposed. If you get a 'tool not found' error, ask the user to restart the MCP server.`;
       }
 
       return ok(output);
@@ -440,20 +462,20 @@ async function upstreamStatus(
   // --- Default: status mode ---
   try {
     console.error(`[upstream_status] Fetching ${remote}/${branch}...`);
-    git(`git fetch ${remote} ${branch}`, projectRoot);
+    await git(`git fetch ${remote} ${branch}`, projectRoot);
 
     const behind = parseInt(
-      git(`git rev-list --count HEAD..${remote}/${branch}`, projectRoot) || "0",
+      await git(`git rev-list --count HEAD..${remote}/${branch}`, projectRoot) || "0",
       10,
     );
     const ahead = parseInt(
-      git(`git rev-list --count ${remote}/${branch}..HEAD`, projectRoot) || "0",
+      await git(`git rev-list --count ${remote}/${branch}..HEAD`, projectRoot) || "0",
       10,
     );
 
     let commits = "";
     if (behind > 0) {
-      commits = git(
+      commits = await git(
         `git log --oneline HEAD..${remote}/${branch} -50`,
         projectRoot,
       );
@@ -474,7 +496,7 @@ async function upstreamStatus(
         .join("\n");
 
       if (verbose) {
-        const diffStat = git(
+        const diffStat = await git(
           `git diff --stat HEAD...${remote}/${branch}`,
           projectRoot,
         );
@@ -489,8 +511,6 @@ async function upstreamStatus(
       output += `Branch: ${mergeState.branch}\n`;
       output += `Merging: ${mergeState.remoteBranch}\n`;
       output += `Conflicts: ${mergeState.conflicts.length} files\n\n`;
-      output += `**NOTE:** The upstream merge tools (upstream_categorize_changes, upstream_resolve_batch, etc.) have now been dynamically exposed.`;
-      output += `\nIf you get a 'tool not found' error, your editor has not yet refreshed the tool list. Ask the user to restart the MCP server or wait a moment.`;
     }
 
     return ok(output);
@@ -536,7 +556,7 @@ async function upstreamCategorizeChanges(
   if (include_diff_stats && allChangedFiles.length > 0) {
     try {
       console.error(`[upstream_categorize_changes] Getting diff stats for ${allChangedFiles.length} files...`);
-      const allStats = git(
+      const allStats = await git(
         `git diff --stat HEAD ${state.remote}/${state.remoteBranch}`,
         projectRoot,
       );
@@ -621,17 +641,27 @@ const upstreamResolveFileSchema = {
   manual_content: z
     .string()
     .optional()
-    .describe("Content to write if strategy is 'manual'"),
+    .describe("Content to write if strategy is 'manual'. If omitted, you must use 'edits' or have already manually modified the file."),
+  edits: z
+    .array(
+      z.object({
+        old_text: z.string().describe("Exact text to find"),
+        new_text: z.string().describe("Text to replace it with"),
+      })
+    )
+    .optional()
+    .describe("List of find-and-replace edits to apply if strategy is 'manual'"),
 };
 
 async function upstreamResolveFile(
   args: Record<string, unknown>,
   { projectRoot }: AppContext,
 ): Promise<ToolResult> {
-  const { file, strategy, manual_content } = args as {
+  const { file, strategy, manual_content, edits } = args as {
     file: string;
     strategy: "ours" | "theirs" | "manual";
     manual_content?: string;
+    edits?: Array<{old_text: string; new_text: string}>;
   };
 
   const state = loadMergeState(projectRoot);
@@ -641,20 +671,37 @@ async function upstreamResolveFile(
 
   try {
     if (strategy === "ours") {
-      git(`git checkout --ours -- ${file}`, projectRoot);
-      git(`git add ${file}`, projectRoot);
+      await git(`git checkout --ours -- ${escapePath(file)}`, projectRoot);
+      await git(`git add ${escapePath(file)}`, projectRoot);
     } else if (strategy === "theirs") {
-      git(`git checkout --theirs -- ${file}`, projectRoot);
-      git(`git add ${file}`, projectRoot);
+      await git(`git checkout --theirs -- ${escapePath(file)}`, projectRoot);
+      await git(`git add ${escapePath(file)}`, projectRoot);
     } else if (strategy === "manual") {
-      if (!manual_content) {
-        return err("manual_content is required when strategy is 'manual'");
-      }
       const filePath = join(projectRoot, file);
-      const fileDir = join(filePath, "..");
-      mkdirSync(fileDir, { recursive: true });
-      writeFileSync(filePath, manual_content);
-      git(`git add ${file}`, projectRoot);
+      
+      if (manual_content !== undefined) {
+        const fileDir = join(filePath, "..");
+        mkdirSync(fileDir, { recursive: true });
+        writeFileSync(filePath, manual_content);
+      } else if (edits && edits.length > 0) {
+        if (!existsSync(filePath)) {
+          return err(`File ${file} does not exist to apply edits to.`);
+        }
+        let content = readFileSync(filePath, "utf-8");
+        for (const edit of edits) {
+          if (!content.includes(edit.old_text)) {
+            return err(`Could not find old_text in ${file}:\n${edit.old_text}`);
+          }
+          content = content.replace(edit.old_text, edit.new_text);
+        }
+        writeFileSync(filePath, content);
+      } else {
+        // Assume the user already modified the file manually with other tools
+        if (!existsSync(filePath)) {
+           // It might have been deleted, which is a valid resolution, but git add handles it
+        }
+      }
+      await git(`git add ${escapePath(file)}`, projectRoot);
     }
 
     state.resolved[file] = true as const;
@@ -730,8 +777,8 @@ async function upstreamResolveBatch(
 
   for (const file of targetFiles) {
     try {
-      git(`git checkout --${strategy} -- ${file}`, projectRoot);
-      git(`git add ${file}`, projectRoot);
+      await git(`git checkout --${strategy} -- ${escapePath(file)}`, projectRoot);
+      await git(`git add ${escapePath(file)}`, projectRoot);
       state.resolved[file] = true as const;
       resolved++;
     } catch (e: unknown) {
@@ -784,10 +831,10 @@ async function upstreamDiffFile(
     const isConflicted = state && state.conflicts.includes(file);
 
     if (isConflicted) {
-      diff = git(`git diff -- ${file}`, projectRoot);
+      diff = await git(`git diff -- ${escapePath(file)}`, projectRoot);
     } else {
-      diff = git(
-        `git diff -U${context_lines} HEAD...${remote}/${branch} -- ${file}`,
+      diff = await git(
+        `git diff -U${context_lines} HEAD...${remote}/${branch} -- ${escapePath(file)}`,
         projectRoot,
       );
     }
@@ -825,15 +872,20 @@ const upstreamVerifySchema = {
     .optional()
     .default(false)
     .describe("If true, run fix commands like 'npm run lint -- --fix'"),
+  deps_installed: z
+    .boolean()
+    .optional()
+    .describe("Set to true if you have already run npm/pnpm install manually after dependency changes"),
 };
 
 async function upstreamVerify(
   args: Record<string, unknown>,
   { projectRoot }: AppContext,
 ): Promise<ToolResult> {
-  const { commands, fix } = args as {
+  const { commands, fix, deps_installed } = args as {
     commands?: string[];
     fix?: boolean;
+    deps_installed?: boolean;
   };
 
   const state = loadMergeState(projectRoot);
@@ -854,17 +906,37 @@ async function upstreamVerify(
   let output = `## Verification Results\n\n`;
   let allPassed = true;
 
+  if (state) {
+    const dependencyFiles = ["package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "pnpm-workspace.yaml"];
+    const hasDependencyChanges = state.allChangedFiles.some((f) =>
+      dependencyFiles.some((df) => f.endsWith(df)),
+    );
+
+    if (hasDependencyChanges && !deps_installed) {
+      let installCmd = "npm install";
+      if (existsSync(join(projectRoot, "pnpm-lock.yaml"))) {
+        installCmd = "pnpm install";
+      } else if (existsSync(join(projectRoot, "yarn.lock"))) {
+        installCmd = "yarn install";
+      }
+      
+      output += `⚠️ **Dependency changes detected in the merge!**\n`;
+      output += `Dependencies are out of date. Do not continue until you run the \`terminal\` tool with the command \`${installCmd}\` to install them.\n`;
+      output += `Once installed, run \`upstream_verify\` again with the parameter \`deps_installed: true\` to bypass this warning and run the actual verifications.\n\n`;
+      return ok(output);
+    }
+  }
+
   for (const cmd of cmds) {
     output += `### \`${cmd}\`\n\n`;
     try {
-      const result = execSync(cmd, {
+      const { stdout } = await execAsync(cmd, {
         cwd: projectRoot,
-        encoding: "utf-8",
-        stdio: "pipe",
         maxBuffer: 10 * 1024 * 1024,
         timeout: 120000,
-      }) as string;
+      });
 
+      const result = String(stdout);
       const lines = result.split("\n");
       const truncated =
         lines.length > 200
@@ -879,12 +951,13 @@ async function upstreamVerify(
     } catch (e: unknown) {
       allPassed = false;
       const execErr = e as {
-        stderr?: string;
-        stdout?: string;
+        stderr?: string | Buffer;
+        stdout?: string | Buffer;
         status?: number;
+        code?: number;
       };
-      const stderr = execErr.stderr || "";
-      const stdout = execErr.stdout || "";
+      const stderr = String(execErr.stderr || "");
+      const stdout = String(execErr.stdout || "");
       const combined = (stdout + "\n" + stderr).trim();
       const lines = combined.split("\n");
       const truncated =
@@ -893,7 +966,7 @@ async function upstreamVerify(
             `\n... (${lines.length - 200} more lines)`
           : combined;
 
-      output += `❌ FAILED (exit code: ${execErr.status})\n\n`;
+      output += `❌ FAILED (exit code: ${execErr.code ?? execErr.status})\n\n`;
       if (truncated) {
         output += `\`\`\`\n${truncated}\n\`\`\`\n\n`;
       }
@@ -942,7 +1015,7 @@ async function upstreamComplete(
   try {
     let unresolvedConflicts: string[] = [];
     try {
-      const conflictOutput = git(
+      const conflictOutput = await git(
         "git diff --name-only --diff-filter=U",
         projectRoot,
       );
@@ -963,9 +1036,9 @@ async function upstreamComplete(
 
     const commitMsg =
       message || `chore: merge upstream ${state.remote}/${state.remoteBranch}`;
-    git("git add -A", projectRoot);
+    await git("git add -A", projectRoot);
     try {
-      git(`git commit -m ${JSON.stringify(commitMsg)}`, projectRoot);
+      await git(`git commit -m ${JSON.stringify(commitMsg)}`, projectRoot);
     } catch {
       // May already be committed
     }
@@ -973,14 +1046,14 @@ async function upstreamComplete(
     const mergeBranch = state.branch;
     const targetBranch = merge_to || "main";
 
-    git(`git checkout ${targetBranch}`, projectRoot);
+    await git(`git checkout ${targetBranch}`, projectRoot);
 
     let mergeMethod = "fast-forward";
     try {
-      git(`git merge ${mergeBranch} --ff-only`, projectRoot);
+      await git(`git merge ${mergeBranch} --ff-only`, projectRoot);
     } catch {
       try {
-        git(`git merge ${mergeBranch}`, projectRoot);
+        await git(`git merge ${mergeBranch}`, projectRoot);
         mergeMethod = "merge commit";
       } catch (e: unknown) {
         return err(
@@ -989,11 +1062,11 @@ async function upstreamComplete(
       }
     }
 
-    const sha = git("git rev-parse --short HEAD", projectRoot);
+    const sha = await git("git rev-parse --short HEAD", projectRoot);
 
     if (cleanup) {
       try {
-        git(`git branch -d ${mergeBranch}`, projectRoot);
+        await git(`git branch -d ${mergeBranch}`, projectRoot);
       } catch {
         // Ignore
       }
@@ -1026,14 +1099,14 @@ async function upstreamAbort(
 
   try {
     try {
-      git("git merge --abort", projectRoot);
+      await git("git merge --abort", projectRoot);
     } catch {
       // Ignore
     }
 
     if (state && state.previousBranch) {
       try {
-        git(`git checkout ${state.previousBranch}`, projectRoot);
+        await git(`git checkout ${state.previousBranch}`, projectRoot);
       } catch {
         // May already be on it
       }
@@ -1041,7 +1114,7 @@ async function upstreamAbort(
 
     if (state && state.branch) {
       try {
-        git(`git branch -D ${state.branch}`, projectRoot);
+        await git(`git branch -D ${state.branch}`, projectRoot);
       } catch {
         // Ignore
       }
@@ -1066,7 +1139,7 @@ export const upstreamTools: ToolDef[] = [
   {
     name: "upstream_status",
     description:
-      "Check how many commits behind/ahead of upstream, and list pending upstream commits. Pass remote_url to initialize config. Pass start_merge to begin a merge. NOTE: Other upstream tools (like upstream_categorize_changes, upstream_resolve_file) are HIDDEN to save context until a merge is active. Call this tool to dynamically expose them.",
+      "Check how many commits behind/ahead of upstream, and list pending upstream commits. Pass remote_url to initialize config. Pass start_merge to begin a merge.",
     schema: upstreamStatusSchema,
     handler: upstreamStatus,
   },
