@@ -73,6 +73,7 @@ export interface UpstreamConfig {
   branch: string;
   policies: UpstreamPolicies;
   categories: Record<string, string[]>;
+  reTimestampMigrations?: boolean;
 }
 
 // ---------------------------------------------------------------------------

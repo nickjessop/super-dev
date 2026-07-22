@@ -237,6 +237,133 @@ async function git(
   return ""; // Unreachable
 }
 
+
+import { readdirSync, renameSync } from "fs";
+
+function formatTimestamp(date: Date): string {
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}${pad(date.getUTCSeconds())}`;
+}
+
+async function handleReTimestampMigrations(
+  projectRoot: string,
+  config: UpstreamConfig
+): Promise<string[]> {
+  if (config.reTimestampMigrations === false) {
+    return [];
+  }
+
+  const migrationsDir = "supabase/migrations";
+  const absMigrationsDir = join(projectRoot, migrationsDir);
+
+  if (!existsSync(absMigrationsDir)) {
+    return [];
+  }
+
+  let headMigrations: string[] = [];
+  try {
+    const output = await git(`git ls-tree -r --name-only HEAD | grep "^supabase/migrations/" || true`, projectRoot);
+    if (output) {
+      headMigrations = output.split("\n").filter(Boolean).map(p => p.trim());
+    }
+  } catch {
+    // Ignore errors
+  }
+
+  let maxLocalTimestamp = "00000000000000";
+  const timestampRegex = /^(\d{14})_/;
+  
+  for (const file of headMigrations) {
+    const filename = file.split('/').pop() || "";
+    const match = filename.match(timestampRegex);
+    if (match) {
+      if (match[1] > maxLocalTimestamp) {
+        maxLocalTimestamp = match[1];
+      }
+    }
+  }
+
+  let currentFiles: string[] = [];
+  try {
+    currentFiles = readdirSync(absMigrationsDir).filter(f => f.endsWith('.sql'));
+  } catch {
+    return [];
+  }
+  
+  const incomingFiles = currentFiles.filter(f => !headMigrations.includes(`${migrationsDir}/${f}`));
+
+  if (incomingFiles.length === 0) {
+    return [];
+  }
+
+  incomingFiles.sort();
+
+  let needsRetimestamping = false;
+  for (const file of incomingFiles) {
+    const match = file.match(timestampRegex);
+    if (match && match[1] < maxLocalTimestamp) {
+      needsRetimestamping = true;
+      break;
+    }
+  }
+
+  if (!needsRetimestamping) {
+    return [];
+  }
+
+  console.error(`[upstream_status] Re-timestamping incoming migrations...`);
+  const renamedLogs: string[] = [];
+  let baseDate = new Date();
+
+  // Guarantee the new baseDate is strictly greater than the maxLocalTimestamp
+  if (maxLocalTimestamp !== "00000000000000") {
+    const y = parseInt(maxLocalTimestamp.slice(0, 4), 10);
+    const m = parseInt(maxLocalTimestamp.slice(4, 6), 10) - 1; // 0-indexed
+    const d = parseInt(maxLocalTimestamp.slice(6, 8), 10);
+    const h = parseInt(maxLocalTimestamp.slice(8, 10), 10);
+    const min = parseInt(maxLocalTimestamp.slice(10, 12), 10);
+    const s = parseInt(maxLocalTimestamp.slice(12, 14), 10);
+    const maxDate = new Date(Date.UTC(y, m, d, h, min, s));
+
+    if (baseDate <= maxDate) {
+      baseDate = new Date(maxDate.getTime() + 1000);
+    }
+  }
+
+  for (let i = 0; i < incomingFiles.length; i++) {
+    const oldFilename = incomingFiles[i];
+    const oldMatch = oldFilename.match(timestampRegex);
+    if (!oldMatch) continue;
+
+    const oldTimestamp = oldMatch[1];
+
+    const newDate = new Date(baseDate.getTime() + i * 1000);
+    const newTimestamp = formatTimestamp(newDate);
+    const newFilename = oldFilename.replace(oldTimestamp, newTimestamp);
+
+    const oldPath = join(absMigrationsDir, oldFilename);
+    const newPath = join(absMigrationsDir, newFilename);
+
+    try {
+      let content = readFileSync(oldPath, "utf-8");
+      content = content.split(oldFilename).join(newFilename);
+      content = content.split(oldTimestamp).join(newTimestamp);
+
+      writeFileSync(newPath, content, "utf-8");
+      unlinkSync(oldPath);
+
+      await git(`git rm --cached --ignore-unmatch ${escapePath(`${migrationsDir}/${oldFilename}`)}`, projectRoot);
+      await git(`git add ${escapePath(`${migrationsDir}/${newFilename}`)}`, projectRoot);
+
+      renamedLogs.push(`Renamed ${oldFilename} -> ${newFilename}`);
+    } catch (err) {
+      console.error(`[upstream_status] Failed to re-timestamp file ${oldFilename}:`, err);
+    }
+  }
+
+  return renamedLogs;
+}
+
 const upstreamStatusSchema = {
   // Init params — only needed when setting up for the first time
   remote_url: z
@@ -389,6 +516,14 @@ async function upstreamStatus(
         hasConflicts = true;
       }
 
+      // Handle sync-time re-timestamping of upstream migrations
+      let reTimestampLogs: string[] = [];
+      try {
+        reTimestampLogs = await handleReTimestampMigrations(projectRoot, config);
+      } catch (e) {
+        console.error("[upstream_status] Failed to re-timestamp migrations:", e);
+      }
+
       let conflicts: string[] = [];
       try {
         const conflictOutput = await git(
@@ -405,7 +540,7 @@ async function upstreamStatus(
       let allChangedFiles: string[] = [];
       try {
         const changedOutput = await git(
-          `git diff --name-only HEAD ${remote}/${branch}`,
+          `git diff --name-only HEAD`,
           projectRoot,
         );
         if (changedOutput) {
@@ -434,6 +569,13 @@ async function upstreamStatus(
       output += `Previous branch: ${previousBranch}\n`;
       output += `Total files changed: ${allChangedFiles.length}\n`;
       output += `Conflicts: ${conflicts.length}\n`;
+
+      if (reTimestampLogs.length > 0) {
+        output += `\n### 🕒 Re-timestamped Migrations\n\n`;
+        for (const log of reTimestampLogs) {
+          output += `  - ${log}\n`;
+        }
+      }
 
       if (conflicts.length > 0) {
         output += `\n### Conflicted Files\n\n`;

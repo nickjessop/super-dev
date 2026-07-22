@@ -227,6 +227,7 @@ For projects that fork or customize an upstream template repository. Run `/upstr
 **Setup**: call `upstream_status` with `remote_url` to configure your upstream remote. Creates `.upstream.json` with:
 
 - **Policies**: files to `always_ours` (keep your version), `always_theirs` (take upstream), or `manual_review` (always stop and ask)
+- **reTimestampMigrations**: By default (`true`), upstream Supabase database migrations are dynamically re-timestamped to the moment of the merge to prevent chronological execution errors in your CI/CD pipelines. Set to `false` to disable this behavior.
 - **Categories**: group files by type (dependencies, UI components, infrastructure) with glob patterns
 
 **Merge workflow:**
