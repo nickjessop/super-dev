@@ -420,10 +420,13 @@ async function upstreamStatus(
           if (policy) output += ` (policy: ${policy})`;
           output += `\n`;
         }
-        output += `\nUse upstream_categorize_changes for a full breakdown.`;
+        output += `\n**NOTE:** The upstream merge tools (upstream_categorize_changes, upstream_resolve_batch, etc.) have now been dynamically exposed.`;
+        output += `\nIf you get a 'tool not found' error, your editor has not yet refreshed the tool list. Ask the user to restart the MCP server or wait a moment.`;
+        output += `\n\nUse upstream_categorize_changes for a full breakdown.`;
         output += `\nUse upstream_resolve_batch to auto-resolve files with policies.`;
       } else {
         output += `\n✅ No conflicts! You can run upstream_verify and then upstream_complete.`;
+        output += `\n**NOTE:** The upstream merge tools have now been dynamically exposed. If you get a 'tool not found' error, ask the user to restart the MCP server.`;
       }
 
       return ok(output);
@@ -478,6 +481,16 @@ async function upstreamStatus(
         output += `\n\n### File Changes Summary\n\n`;
         output += diffStat;
       }
+    }
+
+    const mergeState = loadMergeState(projectRoot);
+    if (mergeState) {
+      output += `\n\n### ⚠️ Active Merge in Progress\n`;
+      output += `Branch: ${mergeState.branch}\n`;
+      output += `Merging: ${mergeState.remoteBranch}\n`;
+      output += `Conflicts: ${mergeState.conflicts.length} files\n\n`;
+      output += `**NOTE:** The upstream merge tools (upstream_categorize_changes, upstream_resolve_batch, etc.) have now been dynamically exposed.`;
+      output += `\nIf you get a 'tool not found' error, your editor has not yet refreshed the tool list. Ask the user to restart the MCP server or wait a moment.`;
     }
 
     return ok(output);
@@ -1053,7 +1066,7 @@ export const upstreamTools: ToolDef[] = [
   {
     name: "upstream_status",
     description:
-      "Check how many commits behind/ahead of upstream, and list pending upstream commits. Pass remote_url to initialize config. Pass start_merge to begin a merge.",
+      "Check how many commits behind/ahead of upstream, and list pending upstream commits. Pass remote_url to initialize config. Pass start_merge to begin a merge. NOTE: Other upstream tools (like upstream_categorize_changes, upstream_resolve_file) are HIDDEN to save context until a merge is active. Call this tool to dynamically expose them.",
     schema: upstreamStatusSchema,
     handler: upstreamStatus,
   },

@@ -772,21 +772,21 @@ export const specTools: ToolDef[] = [
   {
     name: "spec_create",
     description:
-      "Create a new feature spec with requirements/design/tasks scaffolding. Initializes in 'requirements' phase.",
+      "Create a new feature spec with requirements/design/tasks scaffolding. Initializes in 'requirements' phase. NOTE: Calling this tool will dynamically expose the hidden `spec_analyze` tool.",
     schema: specCreateSchema,
     handler: specCreate as ToolDef["handler"],
   },
   {
     name: "spec_status",
     description:
-      "Get status of a spec (phase, approvals, task progress) or list all specs if no name given.",
+      "Get status of a spec (phase, approvals, task progress) or list all specs if no name given. NOTE: Calling this tool will dynamically expose the hidden `spec_analyze` tool if a spec is in the requirements phase.",
     schema: specStatusSchema,
     handler: specStatus as ToolDef["handler"],
   },
   {
     name: "spec_approve",
     description:
-      "Approve the current phase and advance to the next. Phases are gated: requirements → design → tasks → implementation.",
+      "Approve the current phase and advance to the next. Phases are gated: requirements → design → tasks → implementation. NOTE: This may hide the `spec_analyze` tool once requirements are approved.",
     schema: specApproveSchema,
     handler: specApprove as ToolDef["handler"],
   },
