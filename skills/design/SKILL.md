@@ -1,3 +1,8 @@
+---
+name: design
+description: "Build new UI or refine existing surfaces with design system memory. Use when asked to design, build UI, improve visual design, or work on styling/layout."
+---
+
 # Design
 
 **Ask me: "What do you want to work on?"** Wait for my response before reading files or planning.

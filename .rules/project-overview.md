@@ -20,6 +20,7 @@ src/
     thread-history.ts   — Zed threads.db search and reading (sqlite3 + zstd)
     tts-tools.ts        — Voice mode toggle (spawns tts-watcher as detached process)
     upstream-tools.ts   — Upstream merge management with policy-based conflict resolution
+    update-tools.ts     — Skill syncing, git pull, and rebuild
     deprecation-watch.ts — Detects when Zed gains features that obsolete our tools
 ```
 
@@ -30,6 +31,7 @@ src/
 - `npm start` — runs compiled `dist/index.js`
 - Entry point: `dist/index.js` (referenced by `run.sh`, `package.json` bin)
 - `prompts/` directory is at project root, NOT in `src/` — resolved via `import.meta.url`
+- `skills/` directory contains Zed skill folders (code-review, design, design-review) symlinked to `~/.agents/skills/`
 
 ## Key Patterns
 
@@ -38,3 +40,4 @@ src/
 - Tool results use `ok(text)` / `err(text)` from `src/types.ts`
 - Zod schemas are bare objects (`{ name: z.string() }`), not wrapped in `z.object()`
 - The MCP SDK wraps schemas at registration time in `index.ts`
+- Pure-instruction prompts (no MCP tool dependencies) live as Zed skills in `skills/`; tool-coupled prompts remain as MCP prompts in `prompts/` (spec-plan, spec-execute, toggle-voice-mode, upstream-merge, super-dev-update)

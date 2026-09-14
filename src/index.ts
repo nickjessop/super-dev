@@ -19,6 +19,7 @@ import {
 } from "./lib/spec-tools.js";
 import { threadHistoryTools } from "./lib/thread-history.js";
 import { ttsTools } from "./lib/tts-tools.js";
+import { updateTools } from "./lib/update-tools.js";
 import { upstreamTools } from "./lib/upstream-tools.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -44,6 +45,7 @@ const TOOL_GROUPS: Record<string, string> = {
   thread_read: "threads",
   thread_search: "threads",
   voice_mode: "voice",
+  super_dev_update: "update",
   upstream_status: "upstream",
   upstream_categorize_changes: "upstream",
   upstream_resolve_file: "upstream",
@@ -57,10 +59,8 @@ const TOOL_GROUPS: Record<string, string> = {
 const PROMPT_GROUPS: Record<string, string> = {
   "spec-plan": "spec",
   "spec-execute": "spec",
-  "code-review": "review",
-  design: "design",
-  "design-review": "design",
   "toggle-voice-mode": "voice",
+  "super-dev-update": "update",
   "upstream-merge": "upstream",
 };
 
@@ -303,7 +303,7 @@ if (isToolEnabled("spec_analyze")) {
 }
 
 // Tools that do NOT need the project root.
-for (const tool of [...threadHistoryTools, ...ttsTools]) {
+for (const tool of [...threadHistoryTools, ...ttsTools, ...updateTools]) {
   if (!isToolEnabled(tool.name)) continue;
 
   server.registerTool(

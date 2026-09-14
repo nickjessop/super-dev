@@ -1,3 +1,8 @@
+---
+name: code-review
+description: "Senior-engineer-style code review with web research validation. Use when asked to review code, audit a diff, or critique an implementation."
+---
+
 # Code Review
 
 Before starting, ask me: **"What would you like me to review?"**

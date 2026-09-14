@@ -9,9 +9,11 @@ Super Dev is an [MCP server](https://modelcontextprotocol.io/) for **Zed** that 
 
 🔨 **Spec-driven development**: go from idea to implementation with structured requirements → design → tasks phases
 
-🔍 **Code review**: senior-engineer-style review with web validation
+🔍 **Code review**: senior-engineer-style review with web validation (Zed skill — auto-invoked, no server dependency)
 
-🎨 **Design workflows**: build, refine, and review UI surfaces with design system memory
+🎨 **Design workflows**: build, refine, and review UI surfaces with design system memory (Zed skills)
+
+🔄 **Self-updating**: sync skills, pull latest, and rebuild from any project with a single command
 
 🧵 **Conversation history**: search and reference past coding sessions
 
@@ -32,6 +34,13 @@ npm install
 ```
 
 `npm install` automatically builds the project via the `prepare` script.
+
+Then install the Zed skills:
+
+```bash
+# From within Zed, run /super-dev-update
+# Or manually symlink skills into ~/.agents/skills/
+```
 
 ## Setup
 
@@ -78,8 +87,7 @@ All features are enabled by default. Disable what you don't need with the `SUPER
 | Group | Tools | Prompts |
 |-------|-------|--------|
 | `spec` | spec_create, spec_read, spec_status, spec_approve, spec_task_complete, spec_analyze | /spec-plan, /spec-execute |
-| `review` | — | /code-review |
-| `design` | — | /design, /design-review |
+| `update` | super_dev_update | /super-dev-update |
 | `rules` | load_rules + rule:// resources | — |
 | `threads` | thread_list, thread_read, thread_search | — |
 | `voice` | voice_mode | /toggle-voice-mode |
@@ -93,9 +101,7 @@ All features are enabled by default. Disable what you don't need with the `SUPER
 |---------|---------|
 | `/spec-plan` | Drive a requirements → design → tasks workflow with idea pressure-testing and web research |
 | `/spec-execute` | Orchestrate implementation using sub-agents for each task |
-| `/code-review` | Senior-engineer-style code review |
-| `/design` | Build new UI or refine existing, with design system setup built in |
-| `/design-review` | Design director critique with heuristic scoring |
+| `/super-dev-update` | Sync skills, pull latest, and rebuild |
 | `/toggle-voice-mode` | Enable/disable TTS voice feedback |
 | `/upstream-merge` | Guided upstream merge workflow |
 
@@ -114,6 +120,7 @@ All features are enabled by default. Disable what you don't need with the `SUPER
 | `thread_read` | Read a thread by ID with pagination and search |
 | `thread_search` | Full-text search across conversation content |
 | `voice_mode` | Toggle TTS with macOS speech synthesis |
+| `super_dev_update` | Sync Zed skills, pull latest from git, and rebuild |
 | `upstream_status` | Check upstream status, initialize config, or start a merge |
 
 Upstream merge-resolution tools (`upstream_categorize_changes`, `upstream_resolve_file`, `upstream_resolve_batch`, `upstream_diff_file`, `upstream_verify`, `upstream_complete`, `upstream_abort`) appear only during active merges.
@@ -140,7 +147,9 @@ Specs live in `.specs/<feature>/` in the consuming project (gitignored by defaul
 
 ### Code Review
 
-Run `/code-review` and point it at specific files, a git diff, unstaged changes, or a particular area of concern. The agent reviews as a senior engineer:
+> **Zed skill** — lives in `skills/code-review/`, auto-detected by the agent or invoked via `/code-review`. No MCP server dependency.
+
+Point it at specific files, a git diff, unstaged changes, or a particular area of concern. The agent reviews as a senior engineer:
 
 - Identifies bugs, performance issues, and security concerns
 - Searches the web for similar implementations and official documentation to validate patterns
@@ -148,7 +157,9 @@ Run `/code-review` and point it at specific files, a git diff, unstaged changes,
 
 ### Design Workflows
 
-Two commands for building and evaluating UI:
+> **Zed skills** — live in `skills/design/` and `skills/design-review/`, invoked via `/design` and `/design-review` or auto-detected. No MCP server dependency.
+
+Two skills for building and evaluating UI:
 
 **`/design`**: the do-er. Tell it what you want to work on and it figures out the mode:
 
@@ -236,6 +247,20 @@ Merge-resolution tools (`upstream_categorize_changes`, `upstream_resolve_file`, 
 
 ---
 
+## Updating
+
+Run `/super-dev-update` from any project, or call the `super_dev_update` tool directly. It:
+
+1. **Symlinks skills** from the repo's `skills/` into `~/.agents/skills/`
+2. **Pulls latest** from git
+3. **Rebuilds** the MCP server
+
+Skills update immediately via symlinks — edits to files in `skills/` are reflected in Zed without any restart. MCP tool and prompt changes require an MCP server restart to take effect.
+
+On first run, the tool creates the symlinks. After that, `git pull && npm install` also works since symlinks are already in place.
+
+---
+
 ## Architecture
 
 A few deliberate design choices:
@@ -246,11 +271,15 @@ A few deliberate design choices:
 
 **Consolidated prompts.** Slash commands are kept to a minimum by combining related workflows. `/design` handles both building new UI and refining existing surfaces rather than splitting into separate build/polish/setup commands. The agent figures out the mode from context.
 
+**Skills vs. MCP prompts.** Pure-instruction prompts with no MCP tool dependencies live as Zed skills in `skills/` (code-review, design, design-review). They're symlinked to `~/.agents/skills/` so Zed can auto-invoke them without a server round-trip. Tool-coupled prompts that orchestrate MCP tools stay in `prompts/` as MCP prompts (spec-plan, spec-execute, upstream-merge, etc.).
+
 **Prompts for orchestration, tools for mechanics.** Multi-step workflows like spec planning, code review, and design are driven by prompts (markdown instructions) that let the agent adapt to context. Tools handle the mechanical parts: creating files, managing state transitions, marking tasks complete, git operations. The spec workflow is the most tool-heavy, with 5 tools for managing the lifecycle, but the actual planning and decision-making happens in the prompt.
 
 ## Extending
 
-**Add a slash command**: drop a `.md` file in `prompts/`. The first `# Heading` becomes the description.
+**Add an MCP prompt** (tool-coupled): drop a `.md` file in `prompts/`. The first `# Heading` becomes the description. Use this when the prompt needs to orchestrate MCP tools.
+
+**Add a Zed skill** (pure instructions): create a directory in `skills/<name>/` with a `SKILL.md` file. Run `/super-dev-update` to symlink it into `~/.agents/skills/`. Use this for instruction-only prompts with no MCP tool dependencies — they auto-invoke and don't require the server.
 
 **Add a tool**: create a module in `src/lib/`, export a `ToolDef[]` array, register in `src/index.ts`.
 

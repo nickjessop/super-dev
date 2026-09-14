@@ -1,3 +1,8 @@
+---
+name: design-review
+description: "Design director critique with heuristic scoring, AI slop detection, and accessibility audit. Use when asked to review, critique, or evaluate UI/UX design."
+---
+
 # Design Review
 
 **Before starting, ask me: "What would you like me to review?"** I might point you at a route, component, file, or the whole app. Wait for my response.
