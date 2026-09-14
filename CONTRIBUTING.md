@@ -1,6 +1,6 @@
 # Contributing to super-dev
 
-Thanks for your interest in contributing! This is an MCP server that gives AI coding agents superpowers — spec-driven workflows, thread history, voice mode, and more. We'd love your help making it better.
+Thanks for your interest in contributing! This is an MCP server for Zed that gives your AI coding agent superpowers — spec-driven workflows, thread history, voice mode, and more. We'd love your help making it better.
 
 ## Quick Start
 
@@ -81,7 +81,7 @@ There's no test suite yet (contributions welcome!). For now:
 npm run build   # type-check + compile — must pass cleanly
 ```
 
-If you're adding a tool, manually verify it works by running `npm run dev` and calling it through an MCP client.
+If you're adding a tool, manually verify it works by running `npm run dev` and calling it from Zed.
 
 ## Submitting a PR
 

@@ -5,7 +5,7 @@
   Give your dev workflow super powers.
 </p>
 
-Super Dev is an [MCP server](https://modelcontextprotocol.io/) that plugs into **Zed**, **Claude Desktop**, **Cursor**, or any MCP client, adding structured planning, deep code review, and design workflows on top of your AI coding agent.
+Super Dev is an [MCP server](https://modelcontextprotocol.io/) for **Zed** that adds structured planning, deep code review, and design workflows on top of your AI coding agent.
 
 🔨 **Spec-driven development**: go from idea to implementation with structured requirements → design → tasks phases
 
@@ -13,9 +13,9 @@ Super Dev is an [MCP server](https://modelcontextprotocol.io/) that plugs into *
 
 🎨 **Design workflows**: build, refine, and review UI surfaces with design system memory
 
-🧵 **Conversation history**: search and reference past coding sessions (Zed only)
+🧵 **Conversation history**: search and reference past coding sessions
 
-🔊 **Voice mode**: hands-free TTS feedback with Siri neural voices (Zed + macOS)
+🔊 **Voice mode**: hands-free TTS feedback with Siri neural voices (macOS)
 
 🔀 **Upstream merges**: policy-based conflict resolution for forks
 
@@ -35,8 +35,6 @@ npm install
 
 ## Setup
 
-### Zed Editor
-
 Add to your project's `.zed/settings.json`:
 
 ```json
@@ -50,18 +48,14 @@ Add to your project's `.zed/settings.json`:
 }
 ```
 
-### Claude Desktop / Other MCP Clients
-
-Point the client at `run.sh`, or directly at `node /path/to/super-dev/dist/index.js`.
-
-> **Why `run.sh`?** GUI-launched editors don't inherit your shell's nvm/fnm setup. The wrapper sources your shell profile so Node resolves correctly.
+> **Why `run.sh`?** GUI-launched editors don't inherit your shell's nvm/fnm setup. The wrapper sources your shell profile so Node resolves correctly. You can also point directly at `node /path/to/super-dev/dist/index.js` if your PATH is set up.
 
 ### Project Root Resolution
 
 The server determines which project it's operating on (in priority order):
 
 1. `SUPER_DEV_PROJECT_ROOT` env var
-2. MCP `roots/list`: asks the client for workspace roots
+2. MCP `roots/list`: asks Zed for workspace roots
 3. `process.cwd()` fallback
 
 ### Disabling Features
@@ -126,7 +120,7 @@ Upstream merge-resolution tools (`upstream_categorize_changes`, `upstream_resolv
 
 ### Resources
 
-Every rule in `.rules/` is exposed as a `rule://<name>` MCP Resource for clients that support it. Clients without resource support can use the `load_rules` tool instead.
+Every rule in `.rules/` is exposed as a `rule://<name>` MCP Resource. Rules are also available via the `load_rules` tool.
 
 ---
 
@@ -194,31 +188,31 @@ inclusion: manual              # loaded only when explicitly requested
 ---
 ```
 
-The `load_rules` tool uses glob matching so the agent only receives rules relevant to the file it's working on, keeping context focused. For clients that support MCP Resources, rules are also exposed as `rule://<name>` resources.
+The `load_rules` tool uses glob matching so the agent only receives rules relevant to the file it's working on, keeping context focused. Rules are also exposed as `rule://<name>` MCP resources.
 
 ### Conversation History
 
 Search and read past Zed agent threads directly from the agent panel. Useful for recovering context from previous sessions, finding where a decision was made, or referencing past work.
 
-> **Zed + macOS only.** Reads directly from Zed's `threads.db` SQLite database with zstd decompression.
+> **macOS only.** Reads from Zed's `threads.db` SQLite database with zstd decompression.
 
 - **`thread_list`**: browse recent threads with summaries, timestamps, and project folders. Filter by project.
-- **`thread_search`**: full-text search across conversation content (not just titles). Decompresses Zed's zstd-compressed thread data and searches the actual messages.
+- **`thread_search`**: full-text search across conversation content (not just titles). Decompresses zstd-compressed thread data and searches the actual messages.
 - **`thread_read`**: read a specific thread. Large threads (20+ messages) return a table of contents first; use offset or search to navigate to specific sections. Supports message truncation to manage context usage.
 
 ### Voice Mode
 
 Hands-free TTS feedback using macOS speech synthesis. Run `/toggle-voice-mode` or call the `voice_mode` tool directly.
 
-> **Zed + macOS only.** Monitors Zed's conversation database and uses the macOS `say` command.
+> **macOS only.** Monitors the conversation database and uses the macOS `say` command.
 
 - Uses the macOS `say` command with support for Siri neural voices (via the "system" voice option)
-- Spawns a detached watcher process that monitors Zed's conversation file for new agent responses
+- Spawns a detached watcher process that monitors the conversation file for new agent responses
 - Scoped to the current project to prevent cross-project interference
 - Skips reading sub-agent results by default to avoid noise during multi-agent workflows
 - Interrupts active speech immediately when you send a new message
 
-Configure via Zed settings env vars: `SUPER_DEV_VOICE` (voice name), `SUPER_DEV_VOICE_RATE` (words per minute), `SUPER_DEV_SPEECH_MODE` (summary or full).
+Configure via env vars in your Zed settings: `SUPER_DEV_VOICE` (voice name), `SUPER_DEV_VOICE_RATE` (words per minute), `SUPER_DEV_SPEECH_MODE` (summary or full).
 
 ### Upstream Merges
 

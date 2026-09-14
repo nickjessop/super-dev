@@ -1,7 +1,7 @@
 {
   "name": "super-dev-mcp",
   "version": "0.1.0",
-  "description": "MCP server providing spec-driven development workflow tools and slash commands for AI agents (Zed, Claude, etc.)",
+  "description": "MCP server for Zed providing spec-driven development workflow tools and slash commands",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",

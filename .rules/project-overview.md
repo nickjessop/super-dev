@@ -20,7 +20,7 @@ src/
     thread-history.ts   — Zed threads.db search and reading (sqlite3 + zstd)
     tts-tools.ts        — Voice mode toggle (spawns tts-watcher as detached process)
     upstream-tools.ts   — Upstream merge management with policy-based conflict resolution
-    deprecation-watch.ts — Detects when MCP clients gain features that obsolete our tools
+    deprecation-watch.ts — Detects when Zed gains features that obsolete our tools
 ```
 
 ## Build
