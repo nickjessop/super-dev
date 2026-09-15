@@ -89,10 +89,13 @@ let _resolvedProjectRoot: string | null = null;
 
 /**
  * Whether we've successfully resolved a "good" project root (env var or
- * roots/list). When false, resolveProjectRoot() will keep retrying
- * roots/list on every tool call rather than caching a bad cwd fallback.
+ * single-root workspace). When false, resolveProjectRoot() will keep
+ * retrying roots/list on every tool call.
  */
 let _rootIsConfirmed = false;
+
+/** Set when roots/list returns multiple roots without SUPER_DEV_PROJECT_ROOT. */
+let _multiRootDetected: string[] | null = null;
 
 function looksLikeProjectRoot(p: string): boolean {
   const markers = [
@@ -149,18 +152,15 @@ async function resolveProjectRoot(): Promise<string> {
       }
 
       if (roots.length > 1) {
-        // Multiple roots — pick one but DON'T cache permanently.
-        // Re-resolve on each call so we adapt if the active project changes.
+        // Multiple roots — record ambiguity so ensureProjectRoot() can block.
+        _multiRootDetected = roots;
         const picked = roots[0];
         _resolvedProjectRoot = picked;
         // _rootIsConfirmed stays false — we'll re-check next call
-        if (!_rootIsConfirmed) {
-          process.stderr.write(
-            `[super-dev] multiple workspace roots detected: ${roots.join(", ")}\n` +
-              `  Using: ${picked}\n` +
-              `  Set SUPER_DEV_PROJECT_ROOT in your MCP server config for deterministic behavior.\n`,
-          );
-        }
+        process.stderr.write(
+          `[super-dev] multiple workspace roots detected: ${roots.join(", ")}\n` +
+            `  Set SUPER_DEV_PROJECT_ROOT in your project's .zed/settings.json for deterministic behavior.\n`,
+        );
         return _resolvedProjectRoot;
       }
     }
@@ -205,13 +205,35 @@ async function ensureProjectRoot(): Promise<{
 } | null> {
   try {
     await resolveProjectRoot();
-    return null;
   } catch (e: any) {
     return {
       content: [{ type: "text" as const, text: e.message }],
       isError: true,
     };
   }
+
+  // Block if multiple roots detected without an explicit project root set.
+  if (_multiRootDetected && !_rootIsConfirmed) {
+    const roots = _multiRootDetected;
+    const example = roots[0];
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text:
+            `Multiple workspace roots detected:\n${roots.map((r) => `  - ${r}`).join("\n")}\n\n` +
+            `I can't be sure which project you're working in, so I'm stopping before writing files to the wrong place.\n\n` +
+            `**Fix:** add \`SUPER_DEV_PROJECT_ROOT\` to this project's \`.zed/settings.json\`:\n\n` +
+            `\`\`\`json\n{\n  "context_servers": {\n    "super-dev": {\n      "command": "/path/to/super-dev/run.sh",\n      "env": {\n        "SUPER_DEV_PROJECT_ROOT": "${example}"\n      }\n    }\n  }\n}\n\`\`\`\n\n` +
+            `Replace the path with the correct project root. ` +
+            `After saving, restart the MCP server (or reopen the project) for it to take effect.`,
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  return null;
 }
 
 const ctx: AppContext = {
