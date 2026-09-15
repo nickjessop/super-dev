@@ -49,6 +49,11 @@ type GitCommitResult =
   | { committed: true; sha: string; message: string }
   | { committed: false; reason: string };
 
+interface ValidationError {
+  rule: string;
+  message: string;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -265,6 +270,10 @@ export const specCreateSchema = {
     .describe(
       "Enable automatic git commits when parent tasks complete (default: true). Set to false to disable auto-commits.",
     ),
+  specType: z
+    .enum(["feature", "bugfix"])
+    .optional()
+    .describe('Spec type: "feature" (default) or "bugfix". Bugfix specs use a different requirements template.'),
 };
 
 export async function specCreate(
@@ -272,7 +281,8 @@ export async function specCreate(
     name,
     description,
     autoCommit,
-  }: { name: string; description: string; autoCommit?: boolean },
+    specType,
+  }: { name: string; description: string; autoCommit?: boolean; specType?: "feature" | "bugfix" },
   { projectRoot }: AppContext,
 ): Promise<ToolResult> {
   const dir = specPath(projectRoot, name);
@@ -281,19 +291,42 @@ export async function specCreate(
   }
   mkdirSync(dir, { recursive: true });
 
-  writeFileSync(
-    join(dir, "requirements.md"),
-    `# Requirements: ${name}\n\n${description}\n\n## Functional Requirements\n\n### Story 1: As a [role], I want [goal], so that [benefit]\n\n**Acceptance Criteria:**\n- [ ] 1.1 WHEN [trigger], THE [system] SHALL [response]\n- [ ] 1.2 IF [condition], THEN THE [system] SHALL [response]\n\n<!-- EARS Pattern Reference:\n  Ubiquitous (always active): THE [system] SHALL [response]\n  Event-driven:              WHEN [trigger], THE [system] SHALL [response]\n  State-driven:              WHILE [state], THE [system] SHALL [response]\n  Unwanted behavior:         IF [condition], THEN THE [system] SHALL [response]\n  Optional feature:          WHERE [feature], THE [system] SHALL [response]\n  Complex:                   WHILE [state], WHEN [trigger], THE [system] SHALL [response]\n-->\n\n## Non-Functional Requirements\n\n- [ ] (performance, security, accessibility)\n\n## Out of Scope\n\n- (what we're not doing)\n`,
-  );
+  if (specType === "bugfix") {
+    writeFileSync(
+      join(dir, "requirements.md"),
+      `# Bugfix: ${name}\n\n${description}\n\n<!-- Criterion numbers are immutable and append-only. New criteria go at the end. -->\n\n## Bug Condition\n\nDescribe what is broken, how to reproduce it, and what the expected behavior should be.\n\n## Preservation Checks\n\nWhat must continue working after the fix is applied. Each check uses EARS notation.\n\n- [ ] P1. WHILE [normal operation], THE [system] SHALL [continue expected behavior]\n- [ ] P2. WHEN [related trigger], THE [system] SHALL [maintain existing behavior]\n\n## Fix Checks\n\nHow we know the fix works. Each check uses EARS notation with dotted IDs.\n\n- [ ] 1.1 WHEN [trigger that caused the bug], THE [system] SHALL [corrected response]\n- [ ] 1.2 IF [edge case related to the bug], THEN THE [system] SHALL [handle correctly]\n\n<!-- EARS Pattern Reference:\n  Event-driven:   WHEN [trigger], THE [system] SHALL [response]\n  Unwanted:       IF [condition], THEN THE [system] SHALL [response]\n  State-driven:   WHILE [state], THE [system] SHALL [response]\n-->\n`,
+    );
+  } else {
+    writeFileSync(
+      join(dir, "requirements.md"),
+      `# Requirements: ${name}\n\n${description}\n\n<!-- Criterion numbers are immutable and append-only. New criteria go at the end. -->\n\n## Functional Requirements\n\n### Story 1: As a [role], I want [goal], so that [benefit]\n\n**Acceptance Criteria:**\n- [ ] 1.1 WHEN [trigger], THE [system] SHALL [response]\n- [ ] 1.2 IF [condition], THEN THE [system] SHALL [response]\n\n<!-- EARS Pattern Reference:\n  Ubiquitous:     THE [system] SHALL [response]\n  Event-driven:   WHEN [trigger], THE [system] SHALL [response]\n  State-driven:   WHILE [state], THE [system] SHALL [response]\n  Unwanted:       IF [condition], THEN THE [system] SHALL [response]\n  Optional:       WHERE [feature], THE [system] SHALL [response]\n  Complex:        WHILE [state], WHEN [trigger], THE [system] SHALL [response]\n-->\n\n## Non-Functional Requirements\n\n- [ ] NF1. THE [system] SHALL [requirement]\n\n## Out of Scope\n\n- (what we're not doing)\n`,
+    );
+  }
 
   writeFileSync(
     join(dir, "design.md"),
-    `# Design: ${name}\n\nFill this in after requirements are approved.\n\n## Architecture\n\n## Data Model\n\n## API Design\n\n## Components\n\n## Error Handling\n\n## Security\n`,
+    `# Design: ${name}\n\nFill this in after requirements are approved.\n\n## Architecture\n\n## Data Model\n\n## API Design\n\n## Components\n\n## Error Handling\n\n## Security\n\n## Correctness Properties\n\nProperties are named, testable claims. Each must cite the criteria it satisfies.\n\n### Property 1: [Name]\n\n[What the property asserts, in plain language.]\n\n**Validates:** [criterion IDs, e.g. 1.1, 1.3, NF2]\n\n## Decision Records\n\nRecord non-obvious design decisions. Skip this section if all choices follow directly from the requirements.\n\n### D1 — [Title]\n\n**Choice.** What was decided.\n**Alternatives.** What else was considered, and why each was rejected.\n**Why.** The reasoning.\n**Consequence.** What this costs, including what it makes worse.\n\n## Sources & References\n`,
   );
+
+  const tasksDependencyGraph = [
+    '```json',
+    '{',
+    '  "waves": [',
+    '    {',
+    '      "wave": 1,',
+    '      "name": "Wave name",',
+    '      "tasks": ["1.1", "1.2"],',
+    '      "dependsOn": [],',
+    '      "notes": ""',
+    '    }',
+    '  ]',
+    '}',
+    '```',
+  ].join('\n');
 
   writeFileSync(
     join(dir, "tasks.md"),
-    `# Implementation Tasks: ${name}\n\nFill this in after design is approved. Format:\n\n## Agent Tasks\n\nTasks that an LLM/agent can complete autonomously (code changes, file operations, automated tests, git commits).\n\n- [ ] 1. Parent task name\n  - [ ] 1.1 Subtask description\n  - [ ] 1.2 Another subtask\n\n## User Actions\n\nManual steps for the user to complete outside this spec (manual testing, approvals, production deployments, etc.). These are reference notes, not tracked tasks.\n\n- Action description\n- Another action\n`,
+    `# Implementation Tasks: ${name}\n\nFill this in after design is approved.\n\n## Task Dependency Graph\n\n${tasksDependencyGraph}\n\n## Task Tiers\n\n- **[T1] Mechanical** — rename, config wiring, simple plumbing. Narrow check only, no test required.\n- **[T2] Implementation** (default if no marker) — new logic or changed behavior. Targeted tests + compile + lint.\n- **[T3] Gate** — full verification pipeline. Run all tests, typecheck, lint. Must pass before done.\n\n## Agent Tasks\n\nEach task must include: target file(s), constraints, failure modes, and which criteria it satisfies.\n\n- [ ] 1. Parent task name\n  - [ ] 1.1 Subtask description [T2]\n    - **Files:** \`path/to/file.ts\`\n    - **Constraint:** What must not break\n    - **Failure mode:** What goes wrong if this is done incorrectly\n    - _Requirements: 1.1, 1.2_\n  - [ ] 1.2 Another subtask [T1]\n    - **Files:** \`path/to/other.ts\`\n    - _Requirements: 1.3_\n\n## User Actions\n\nManual steps for the user (reference notes, not tracked tasks).\n\n- Action description\n- Another action\n`,
   );
 
   saveState(projectRoot, name, {
@@ -301,7 +334,9 @@ export async function specCreate(
     approved: { requirements: false, design: false, tasks: false },
     description,
     createdAt: new Date().toISOString(),
+    specVersion: 2,
     ...(autoCommit === false ? { autoCommit: false } : {}),
+    ...(specType === "bugfix" ? { specType: "bugfix" as const } : {}),
   });
 
   return ok(
@@ -339,7 +374,8 @@ export async function specStatus(
             done: "✓ complete",
           } as Record<SpecPhase, string>
         )[state.phase] || state.phase;
-      return `  - ${s} [phase: ${state.phase}] — ${state.description || "no description"}\n    Next: ${nextAction}`;
+      const typeLabel = state.specType === "bugfix" ? " [bugfix]" : "";
+      return `  - ${s}${typeLabel} [phase: ${state.phase}] — ${state.description || "no description"}\n    Next: ${nextAction}`;
     });
     return ok(`Specs:\n${lines.join("\n")}`);
   }
@@ -427,6 +463,10 @@ export async function specStatus(
     `  - autoCommit: ${state.autoCommit !== false ? "✓ (enabled)" : "✗ (disabled)"}`,
   ];
 
+  if (state.specType) {
+    lines.push(`  - type: ${state.specType}`);
+  }
+
   if (state.phase === "implementation" || state.phase === "done") {
     const tasksFile = join(specPath(projectRoot, name), "tasks.md");
     if (existsSync(tasksFile)) {
@@ -458,6 +498,315 @@ export async function specStatus(
   }
 
   return ok(lines.join("\n"));
+}
+
+// ---------------------------------------------------------------------------
+// Validation helpers
+// ---------------------------------------------------------------------------
+
+function parseCriterionIds(reqContent: string): Set<string> {
+  const ids = new Set<string>();
+  for (const line of reqContent.split("\n")) {
+    // Dotted IDs: "- [ ] 1.1 ..." or "- [x] 1.1 ..."
+    const dotted = line.match(/^- \[[ x]\] (\d+\.\d+)\b/);
+    if (dotted) { ids.add(dotted[1]); continue; }
+    // NF IDs: "- [ ] NF1. ..."
+    const nf = line.match(/^- \[[ x]\] (NF\d+)\./);
+    if (nf) { ids.add(nf[1]); continue; }
+    // Preservation IDs (bugfix): "- [ ] P1. ..."
+    const pres = line.match(/^- \[[ x]\] (P\d+)\./);
+    if (pres) { ids.add(pres[1]); }
+  }
+  return ids;
+}
+
+function parseTaskReferences(tasksContent: string): { taskId: string; refs: string[]; isLeaf: boolean }[] {
+  const lines = tasksContent.split("\n");
+  const results: { taskId: string; refs: string[]; isLeaf: boolean }[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const task = parseTask(lines[i]);
+    if (!task) continue;
+
+    const isLeaf = !isParentTask(task.id);
+    const refs: string[] = [];
+
+    // Check inline on the same line
+    const inlineMatch = task.raw.match(/(?:_Requirements?:|Requirements?:)\s*([^_)]+)/i);
+    if (inlineMatch) {
+      refs.push(...inlineMatch[1].split(",").map(r => r.trim()).filter(Boolean));
+    }
+
+    // Check body lines below (indented further than this task, until next task line)
+    if (!inlineMatch) {
+      for (let j = i + 1; j < lines.length; j++) {
+        const nextTask = parseTask(lines[j]);
+        if (nextTask) break;
+        const bodyMatch = lines[j].match(/(?:_Requirements?:|Requirements?:)\s*([^_)]+)/i);
+        if (bodyMatch) {
+          refs.push(...bodyMatch[1].split(",").map(r => r.trim()).filter(Boolean));
+          break;
+        }
+      }
+    }
+
+    results.push({ taskId: task.id, refs, isLeaf });
+  }
+
+  return results;
+}
+
+function validateRequirementsFormat(content: string, specType: string): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  if (specType === "bugfix") {
+    const requiredSections = ["## Bug Condition", "## Preservation Checks", "## Fix Checks"];
+    for (const section of requiredSections) {
+      if (!content.includes(section)) {
+        errors.push({
+          rule: "format/missing-section",
+          message: `requirements.md is missing required section "${section}"`,
+        });
+      }
+    }
+  } else {
+    // Feature: need at least one Story heading
+    const storyHeadings = content.match(/^### Story \d+:/gm);
+    if (!storyHeadings || storyHeadings.length === 0) {
+      errors.push({
+        rule: "format/missing-story",
+        message: 'requirements.md has no "### Story N:" headings',
+      });
+    } else {
+      // Check each story has at least one criterion
+      const sections = content.split(/^### Story \d+:/gm);
+      sections.shift(); // remove content before first story
+      for (let i = 0; i < sections.length; i++) {
+        const hasCriterion = /^- \[[ x]\] \d+\.\d+\b/m.test(sections[i]);
+        if (!hasCriterion) {
+          errors.push({
+            rule: "format/empty-story",
+            message: `Story ${i + 1} has no acceptance criteria (expected "- [ ] N.M ..." lines)`,
+          });
+        }
+      }
+    }
+  }
+
+  return errors;
+}
+
+function validateDesignFormat(content: string, reqContent: string): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  // Required sections
+  const requiredSections = ["## Architecture", "## Error Handling", "## Security"];
+  for (const section of requiredSections) {
+    if (!content.includes(section)) {
+      errors.push({
+        rule: "format/missing-section",
+        message: `design.md is missing required section "${section}"`,
+      });
+    }
+  }
+
+  // Need at least one of Data Model or API Design
+  if (!content.includes("## Data Model") && !content.includes("## API Design")) {
+    errors.push({
+      rule: "format/missing-section",
+      message: 'design.md is missing "## Data Model" or "## API Design" (at least one required)',
+    });
+  }
+
+  // If Correctness Properties section exists, check for Validates: lines
+  if (content.includes("## Correctness Properties")) {
+    const propsSection = content.split("## Correctness Properties")[1]?.split(/\n## /)[0] || "";
+    const hasValidates = /\*\*Validates:\*\*/i.test(propsSection);
+    if (!hasValidates) {
+      errors.push({
+        rule: "format/empty-properties",
+        message: "Correctness Properties section exists but has no **Validates:** lines",
+      });
+    }
+
+    // Cross-check Validates: IDs against requirements
+    const criterionIds = parseCriterionIds(reqContent);
+    const validatesMatches = propsSection.matchAll(/\*\*Validates:\*\*\s*([^\n]+)/gi);
+    for (const match of validatesMatches) {
+      const ids = match[1].split(",").map(id => id.trim()).filter(Boolean);
+      for (const id of ids) {
+        if (!criterionIds.has(id)) {
+          errors.push({
+            rule: "format/invalid-validates-ref",
+            message: `Correctness property references criterion ${id} which does not exist in requirements.md`,
+          });
+        }
+      }
+    }
+  }
+
+  return errors;
+}
+
+function validateTasksFormat(content: string): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  // At least one task with checkbox
+  const hasTask = /^- \[[ x]\] \d+/m.test(content);
+  if (!hasTask) {
+    errors.push({
+      rule: "format/no-tasks",
+      message: "tasks.md has no tasks (expected checkbox lines like '- [ ] 1.1 ...')",
+    });
+  }
+
+  // At least one Requirements: reference
+  const hasRef = /Requirements?:/i.test(content);
+  if (!hasRef) {
+    errors.push({
+      rule: "format/no-requirements-refs",
+      message: "tasks.md has no Requirements: references",
+    });
+  }
+
+  // Task Dependency Graph section with parseable JSON
+  const graphMatch = content.match(/## Task Dependency Graph\s*\n[\s\S]*?```json\s*\n([\s\S]*?)```/);
+  if (!graphMatch) {
+    errors.push({
+      rule: "format/missing-section",
+      message: 'tasks.md is missing "## Task Dependency Graph" section with a fenced JSON block',
+    });
+    return errors; // Can't validate waves without the graph
+  }
+
+  let waves: { wave: number; name: string; tasks: string[]; dependsOn: number[]; notes?: string }[];
+  try {
+    const parsed = JSON.parse(graphMatch[1]);
+    waves = parsed.waves;
+    if (!Array.isArray(waves)) {
+      errors.push({ rule: "format/invalid-wave-json", message: "Wave JSON 'waves' is not an array" });
+      return errors;
+    }
+  } catch (e: any) {
+    errors.push({ rule: "format/invalid-wave-json", message: `Wave JSON does not parse: ${e.message}` });
+    return errors;
+  }
+
+  // Extract all task IDs from the file body
+  const allTasks = content.split("\n")
+    .map(parseTask)
+    .filter((t): t is ParsedTask => t !== null && !t.manual);
+  const taskIdsInFile = new Set(allTasks.map(t => t.id));
+  const leafTaskIds = new Set(allTasks.filter(t => !isParentTask(t.id)).map(t => t.id));
+
+  // Every leaf task in exactly one wave
+  const taskToWave = new Map<string, number>();
+  for (const w of waves) {
+    for (const tid of w.tasks) {
+      if (taskToWave.has(tid)) {
+        errors.push({
+          rule: "format/duplicate-wave-task",
+          message: `Task ${tid} appears in wave ${taskToWave.get(tid)} and wave ${w.wave}`,
+        });
+      } else {
+        taskToWave.set(tid, w.wave);
+      }
+    }
+  }
+
+  // Check all leaf tasks are in a wave
+  for (const tid of leafTaskIds) {
+    if (!taskToWave.has(tid)) {
+      errors.push({
+        rule: "format/task-not-in-wave",
+        message: `Task ${tid} is not in any wave in the dependency graph`,
+      });
+    }
+  }
+
+  // No phantom tasks (in wave but not in file)
+  for (const [tid, waveNum] of taskToWave) {
+    if (!taskIdsInFile.has(tid)) {
+      errors.push({
+        rule: "format/phantom-task",
+        message: `Wave ${waveNum} references task ${tid} which does not exist in the file`,
+      });
+    }
+  }
+
+  // No forward dependencies
+  for (const w of waves) {
+    for (const dep of w.dependsOn) {
+      if (dep >= w.wave) {
+        errors.push({
+          rule: "format/forward-dependency",
+          message: `Wave ${w.wave} depends on wave ${dep} (forward or self dependency)`,
+        });
+      }
+    }
+  }
+
+  return errors;
+}
+
+function validateCoverage(reqContent: string, tasksContent: string): ValidationError[] {
+  const errors: ValidationError[] = [];
+  const criterionIds = parseCriterionIds(reqContent);
+  const taskRefs = parseTaskReferences(tasksContent);
+
+  // Collect all referenced criterion IDs from tasks
+  const referencedIds = new Set<string>();
+  for (const { refs } of taskRefs) {
+    for (const ref of refs) {
+      referencedIds.add(ref);
+    }
+  }
+
+  // Every criterion must be cited by at least one task
+  const uncovered: string[] = [];
+  for (const id of criterionIds) {
+    if (!referencedIds.has(id)) {
+      uncovered.push(id);
+    }
+  }
+  if (uncovered.length > 0) {
+    errors.push({
+      rule: "coverage/uncovered-criterion",
+      message: `Criteria not cited by any task: ${uncovered.join(", ")}`,
+    });
+  }
+
+  // Every task reference must resolve to a real criterion
+  const unresolvable: string[] = [];
+  for (const { taskId, refs } of taskRefs) {
+    for (const ref of refs) {
+      if (!criterionIds.has(ref)) {
+        unresolvable.push(`${taskId} \u2192 ${ref}`);
+      }
+    }
+  }
+  if (unresolvable.length > 0) {
+    errors.push({
+      rule: "coverage/unresolvable-ref",
+      message: `Tasks reference non-existent criteria: ${unresolvable.join(", ")}`,
+    });
+  }
+
+  // Every leaf task must have at least one reference
+  const missingRef: string[] = [];
+  for (const { taskId, refs, isLeaf } of taskRefs) {
+    if (isLeaf && refs.length === 0) {
+      missingRef.push(taskId);
+    }
+  }
+  if (missingRef.length > 0) {
+    errors.push({
+      rule: "coverage/missing-ref",
+      message: `Leaf tasks with no Requirements: reference: ${missingRef.join(", ")}`,
+    });
+  }
+
+  return errors;
 }
 
 export const specApproveSchema = {
@@ -495,6 +844,48 @@ export async function specApprove(
       `Cannot approve '${phase}' — current phase is '${state.phase}'. Approve in order.`,
     );
   }
+
+  // --- Validation gate (v2 specs only) ---
+  if (state.specVersion && state.specVersion >= 2) {
+    const dir = specPath(projectRoot, name);
+    const allErrors: ValidationError[] = [];
+    const specType = state.specType || "feature";
+
+    if (phase === "requirements") {
+      const reqFile = join(dir, "requirements.md");
+      if (existsSync(reqFile)) {
+        const content = readFileSync(reqFile, "utf-8");
+        allErrors.push(...validateRequirementsFormat(content, specType));
+      }
+    } else if (phase === "design") {
+      const designFile = join(dir, "design.md");
+      const reqFile = join(dir, "requirements.md");
+      if (existsSync(designFile)) {
+        const content = readFileSync(designFile, "utf-8");
+        const reqContent = existsSync(reqFile) ? readFileSync(reqFile, "utf-8") : "";
+        allErrors.push(...validateDesignFormat(content, reqContent));
+      }
+    } else if (phase === "tasks") {
+      const tasksFile = join(dir, "tasks.md");
+      const reqFile = join(dir, "requirements.md");
+      if (existsSync(tasksFile) && existsSync(reqFile)) {
+        const tasksContent = readFileSync(tasksFile, "utf-8");
+        const reqContent = readFileSync(reqFile, "utf-8");
+        allErrors.push(...validateTasksFormat(tasksContent));
+        allErrors.push(...validateCoverage(reqContent, tasksContent));
+      }
+    }
+
+    if (allErrors.length > 0) {
+      const errorList = allErrors
+        .map((e) => `  ${e.rule}: ${e.message}`)
+        .join("\n");
+      return err(
+        `Cannot approve '${phase}' — ${allErrors.length} validation error(s):\n\n${errorList}`,
+      );
+    }
+  }
+  // --- End validation gate ---
 
   state.approved[phase] = true;
 

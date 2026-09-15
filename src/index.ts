@@ -128,6 +128,7 @@ async function resolveProjectRoot(): Promise<string> {
 
   // 2. MCP roots/list — retry on every call until it succeeds, because
   //    the client may not be ready on the first attempt.
+  let rootsListFailed = false;
   try {
     const result = await server.server.listRoots();
     if (result?.roots?.length > 0) {
@@ -142,12 +143,18 @@ async function resolveProjectRoot(): Promise<string> {
         .filter((p: string | null): p is string => p !== null && existsSync(p));
 
       if (roots.length === 1) {
-        // Single root — cache it permanently.
+        const prev = _resolvedProjectRoot;
         _resolvedProjectRoot = roots[0];
         _rootIsConfirmed = true;
-        process.stderr.write(
-          `[super-dev] project root resolved via MCP roots/list: ${roots[0]}\n`,
-        );
+        if (prev && prev !== roots[0]) {
+          process.stderr.write(
+            `[super-dev] project root updated: ${prev} → ${roots[0]} (roots/list now available)\n`,
+          );
+        } else {
+          process.stderr.write(
+            `[super-dev] project root resolved via MCP roots/list: ${roots[0]}\n`,
+          );
+        }
         return _resolvedProjectRoot;
       }
 
@@ -166,6 +173,7 @@ async function resolveProjectRoot(): Promise<string> {
     }
   } catch {
     // Client doesn't support roots/list (yet) — will retry next call.
+    rootsListFailed = true;
   }
 
   // 3. Fallback to cwd — but refuse to use "/" or $HOME.
@@ -180,20 +188,30 @@ async function resolveProjectRoot(): Promise<string> {
     );
   }
 
-  if (!looksLikeProjectRoot(cwd)) {
+  _resolvedProjectRoot = cwd;
+
+  if (rootsListFailed) {
+    // roots/list not available yet — use cwd temporarily but DON'T confirm,
+    // so we retry roots/list on the next tool call.
     process.stderr.write(
-      `[super-dev] WARNING: cwd '${cwd}' does not look like a project root ` +
-        `(no .git, package.json, etc.). Tools may write files in the wrong location.\n` +
-        `  Set SUPER_DEV_PROJECT_ROOT to override.\n`,
+      `[super-dev] project root tentatively set to cwd: ${cwd} (roots/list not yet available, will retry)\n`,
     );
   } else {
-    process.stderr.write(
-      `[super-dev] project root resolved via cwd: ${cwd}\n`,
-    );
+    // roots/list succeeded but returned no roots — cwd is our best option.
+    _rootIsConfirmed = true;
+    if (!looksLikeProjectRoot(cwd)) {
+      process.stderr.write(
+        `[super-dev] WARNING: cwd '${cwd}' does not look like a project root ` +
+          `(no .git, package.json, etc.). Tools may write files in the wrong location.\n` +
+          `  Set SUPER_DEV_PROJECT_ROOT to override.\n`,
+      );
+    } else {
+      process.stderr.write(
+        `[super-dev] project root resolved via cwd: ${cwd}\n`,
+      );
+    }
   }
 
-  _resolvedProjectRoot = cwd;
-  _rootIsConfirmed = true;
   return _resolvedProjectRoot;
 }
 

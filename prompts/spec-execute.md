@@ -30,6 +30,7 @@ Review the task list. Identify:
 - **User Actions** — these are just reference notes for the user (no checkboxes); ignore them during execution
 - **Independent tasks** — tasks with no dependency on each other (can run in parallel)
 - **Dependent tasks** — tasks that must wait for others to finish first
+- **Wave graph** — if tasks.md has a `## Task Dependency Graph` section, read the wave JSON. Execute waves in dependency order. Within a wave, parallelize tasks unless the wave notes say `[serial]`.
 
 Present a brief summary:
 > "Spec `xyz`: 4/12 agent tasks complete. Next up: tasks 2.1, 2.2 (parallel), then 2.3 (depends on 2.1). Ready to start?"
@@ -46,10 +47,16 @@ For each task (or group of independent tasks), delegate to sub-agents.
 3. The relevant requirement numbers and their acceptance criteria from requirements.md
 4. The file paths and project conventions the task will touch
 5. Any context from previously completed tasks that this task depends on
+6. The full task body (Files, Constraint, Failure mode) — not just the title line
 
 **Parallel execution:** If tasks 2.1 and 2.2 are independent, delegate both simultaneously. Wait for both to complete before moving to 2.3 if it depends on them.
 
 **Scope each delegation tightly.** A sub-agent should be able to complete its task without reading the entire codebase. Give it exactly the files and context it needs.
+
+**Match verification to task tier:**
+- **[T1] Mechanical** — verify the change compiles. No test required.
+- **[T2] Implementation** (default if no tier marker) — run targeted tests + compile + lint for the changed files.
+- **[T3] Gate** — run the full verification pipeline (all tests, typecheck, lint). Must pass before proceeding.
 
 ## Step 5: Review and complete
 
@@ -75,6 +82,10 @@ Move to the next wave of tasks. Continue until all tasks are complete or you hit
 - **Do NOT manually run git commit.** The `spec_task_complete` tool handles commits automatically on parent task completion.
 - **Do NOT mark a task complete without verifying the work.**
 - **Do NOT scan the full codebase.** Read only the files relevant to the current task.
-- **Stop and ask me** if a task is ambiguous, blocked, or if you discover the design needs revision.
+- **Park blocked tasks, don't stop.** If a task is ambiguous or blocked:
+  1. Record the blocking question as a comment in the task body
+  2. Skip the task and continue with tasks that do not depend on it
+  3. When execution pauses or completes, surface all blocked tasks and their questions in a summary
+  - Only stop entirely if the design itself needs revision (fundamental architecture issue).
 
 Begin by identifying the spec (Step 1), then load context and assess progress before executing.

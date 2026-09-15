@@ -102,9 +102,13 @@ Then read and edit `.specs/<name>/design.md`. Cover:
 - Components (server vs client)
 - Error Handling
 - Security
+- **Correctness Properties** — named, testable claims with `Validates:` lines citing requirement criterion IDs (e.g., `**Validates:** 1.1, 3.2, NF2`). Each property should consolidate related criteria into one testable assertion.
+- **Decision Records** — for non-obvious design decisions only. Each record: Choice, Alternatives (what was rejected and why), Why (reasoning), Consequence (what it costs). Skip for choices that follow directly from requirements.
 - **Sources & References** — link to the docs/articles that informed key decisions
 
 Reference specific requirement numbers for traceability.
+
+Before drafting, **measure what you can** from the real system — file sizes, API response times, dependency counts, call site counts. Carry numbers in the design, not adjectives.
 
 **Show me the design and ask for approval.** Iterate until I'm satisfied. When I confirm, call `spec_approve({ name, phase: "design" })`.
 
@@ -129,6 +133,22 @@ Format with hierarchical IDs:
 ```
 
 Each subtask should be completable in a single focused step by an agent.
+
+#### Wave Dependency Graph
+Define a `## Task Dependency Graph` section with a fenced JSON block. Each wave has: `wave` (number), `name`, `tasks` (array of task IDs), `dependsOn` (array of wave numbers), and `notes`. Tasks within a wave can run in parallel unless marked `[serial]`.
+
+#### Task Tiers
+Mark each subtask with a tier:
+- `[T1]` Mechanical — rename, config wiring. Narrow check only, no test required.
+- `[T2]` Implementation (default) — new logic. Targeted tests + compile + lint.
+- `[T3]` Gate — full verification pipeline. Must pass before next wave.
+
+#### Rich Task Bodies
+Each subtask should include:
+- **Files:** which file(s) own the change
+- **Constraint:** what must not break
+- **Failure mode:** what goes wrong if done incorrectly
+- `_Requirements: N.M, N.M_` — which criteria the task satisfies
 
 #### User Actions
 Manual steps for the user to complete outside this spec:

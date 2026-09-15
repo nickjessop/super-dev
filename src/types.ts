@@ -56,6 +56,8 @@ export interface SpecState {
   createdAt: string;
   adoptedAt?: string;
   autoCommit?: boolean;
+  specVersion?: number;            // 2 for new specs, absent for legacy
+  specType?: "feature" | "bugfix"; // absent means "feature"
 }
 
 // ---------------------------------------------------------------------------
