@@ -128,14 +128,39 @@ async function resolveProjectRoot(): Promise<string> {
   try {
     const result = await server.server.listRoots();
     if (result?.roots?.length > 0) {
-      const rootUri = result.roots[0].uri;
-      const rootPath = fileURLToPath(rootUri);
-      if (existsSync(rootPath)) {
-        _resolvedProjectRoot = rootPath;
+      const roots = result.roots
+        .map((r: { uri: string }) => {
+          try {
+            return fileURLToPath(r.uri);
+          } catch {
+            return null;
+          }
+        })
+        .filter((p: string | null): p is string => p !== null && existsSync(p));
+
+      if (roots.length === 1) {
+        // Single root — cache it permanently.
+        _resolvedProjectRoot = roots[0];
         _rootIsConfirmed = true;
         process.stderr.write(
-          `[super-dev] project root resolved via MCP roots/list: ${rootPath}\n`,
+          `[super-dev] project root resolved via MCP roots/list: ${roots[0]}\n`,
         );
+        return _resolvedProjectRoot;
+      }
+
+      if (roots.length > 1) {
+        // Multiple roots — pick one but DON'T cache permanently.
+        // Re-resolve on each call so we adapt if the active project changes.
+        const picked = roots[0];
+        _resolvedProjectRoot = picked;
+        // _rootIsConfirmed stays false — we'll re-check next call
+        if (!_rootIsConfirmed) {
+          process.stderr.write(
+            `[super-dev] multiple workspace roots detected: ${roots.join(", ")}\n` +
+              `  Using: ${picked}\n` +
+              `  Set SUPER_DEV_PROJECT_ROOT in your MCP server config for deterministic behavior.\n`,
+          );
+        }
         return _resolvedProjectRoot;
       }
     }
