@@ -186,6 +186,10 @@ async function resolveProjectRoot(): Promise<string> {
         `(no .git, package.json, etc.). Tools may write files in the wrong location.\n` +
         `  Set SUPER_DEV_PROJECT_ROOT to override.\n`,
     );
+  } else {
+    process.stderr.write(
+      `[super-dev] project root resolved via cwd: ${cwd}\n`,
+    );
   }
 
   _resolvedProjectRoot = cwd;
