@@ -9,9 +9,13 @@ Super Dev is an [MCP server](https://modelcontextprotocol.io/) for **Zed** that 
 
 🔨 **Spec-driven development**: go from idea to implementation with structured requirements → design → tasks phases
 
-🔍 **Code review**: senior-engineer-style review with web validation (Zed skill — auto-invoked, no server dependency)
+🔍 **Code review**: adversarial dual-track review with architecture audit and security/logic hunt (Zed skills)
+
+🐛 **Bug hunting**: multi-stage vulnerability discovery with parallel hunters and adversarial validation (Zed skills)
 
 🎨 **Design workflows**: build, refine, and review UI surfaces with design system memory (Zed skills)
+
+✅ **Task tracking**: lightweight todo lists for ad-hoc multi-step work outside of specs
 
 🔄 **Self-updating**: sync skills, pull latest, and rebuild from any project with a single command
 
@@ -67,6 +71,8 @@ The server determines which project it's operating on (in priority order):
 2. MCP `roots/list`: asks Zed for workspace roots
 3. `process.cwd()` fallback
 
+When multiple workspace roots are detected (e.g. multiple projects open in the same Zed window), project-scoped tools return a structured error with the detected roots and a ready-to-copy `SUPER_DEV_PROJECT_ROOT` snippet. Set the env var to resolve the ambiguity.
+
 ### Disabling Features
 
 All features are enabled by default. Disable what you don't need with the `SUPER_DEV_DISABLE` env var to reduce tool clutter and context overhead:
@@ -92,6 +98,7 @@ All features are enabled by default. Disable what you don't need with the `SUPER
 | `threads` | thread_list, thread_read, thread_search | — |
 | `voice` | voice_mode | /toggle-voice-mode |
 | `upstream` | upstream_status + all merge tools | /upstream-merge |
+| `todo` | todo_write, todo_read, todo_clear | — |
 
 ## Quick Reference
 
@@ -109,7 +116,7 @@ All features are enabled by default. Disable what you don't need with the `SUPER
 
 | Tool | Purpose |
 |------|--------|
-| `spec_create` | Scaffold a new spec with requirements/design/tasks |
+| `spec_create` | Scaffold a new spec (feature or bugfix) with requirements/design/tasks |
 | `spec_read` | Read a spec file (requirements, design, or tasks) |
 | `spec_status` | List all specs or get details on one |
 | `spec_approve` | Approve current phase and advance to the next |
@@ -122,6 +129,9 @@ All features are enabled by default. Disable what you don't need with the `SUPER
 | `voice_mode` | Toggle TTS with macOS speech synthesis |
 | `super_dev_update` | Sync Zed skills, pull latest from git, and rebuild |
 | `upstream_status` | Check upstream status, initialize config, or start a merge |
+| `todo_write` | Create or update a todo list for ad-hoc multi-step tasks |
+| `todo_read` | Read a todo list by ID, or list all todo lists |
+| `todo_clear` | Clear todo lists by ID, completed-only, or all |
 
 Upstream merge-resolution tools (`upstream_categorize_changes`, `upstream_resolve_file`, `upstream_resolve_batch`, `upstream_diff_file`, `upstream_verify`, `upstream_complete`, `upstream_abort`) appear only during active merges.
 
@@ -137,23 +147,38 @@ Every rule in `.rules/` is exposed as a `rule://<name>` MCP Resource. Rules are 
 
 Go from a rough idea to shipped code with structured phases and approval gates.
 
-1. **`/spec-plan`**: describe your feature. The agent pressure-tests the idea, does web research, and helps you think through edge cases before any code is written.
-2. **`spec_create`**: scaffolds `.specs/<feature>/` in your project with `requirements.md`, `design.md`, `tasks.md`, and `state.json`.
-3. **Requirements → Design → Tasks**: each phase must be explicitly approved before the next unlocks. During the requirements phase, `spec_analyze` checks for ambiguity, conflicts, completeness gaps, solution leakage, and testability — surfacing findings as A/B questions you answer before approval.
-4. **`/spec-execute`**: orchestrates implementation by delegating tasks to sub-agents. The main thread stays clean for coordination while sub-agents do the coding.
+1. **`/spec-plan`**: describe your feature (or bug). The agent pressure-tests the idea, does web research, and helps you think through edge cases before any code is written.
+2. **`spec_create`**: scaffolds `.specs/<name>/` in your project with `requirements.md`, `design.md`, `tasks.md`, and `state.json`. Supports two variants:
+   - **Feature** (default): functional/non-functional requirements in EARS notation
+   - **Bugfix** (`specType: "bugfix"`): Bug Condition / Preservation Checks / Fix Checks template
+3. **Requirements → Design → Tasks**: each phase must be explicitly approved before the next unlocks. Approval runs validation checks:
+   - **Format validation**: verifies required sections exist per phase and spec type
+   - **Coverage validation**: bidirectional check that every requirement criterion is cited by at least one task, and every task reference resolves to a real criterion
+   - **`spec_analyze`**: checks for ambiguity, conflicts, completeness gaps, solution leakage, and testability — surfacing findings as A/B questions you answer before approval
+4. **`/spec-execute`**: orchestrates implementation by delegating tasks to sub-agents. Tasks are organized into **waves** (dependency graph) with **tiers** (`[T1]`/`[T2]`/`[T3]`) for proportional verification effort. The main thread stays clean for coordination while sub-agents do the coding.
 5. **Auto-commit**: when a parent task is marked complete, the agent automatically commits the work with a conventional commit message. Opt out per-spec with `autoCommit: false`.
 
-Specs live in `.specs/<feature>/` in the consuming project (gitignored by default).
+Specs live in `.specs/<name>/` in the consuming project (gitignored by default).
 
 ### Code Review
 
 > **Zed skill** — lives in `skills/code-review/`, auto-detected by the agent or invoked via `/code-review`. No MCP server dependency.
 
-Point it at specific files, a git diff, unstaged changes, or a particular area of concern. The agent reviews as a senior engineer:
+Adversarial dual-track review that runs two independent analysis passes and synthesizes the results:
 
-- Identifies bugs, performance issues, and security concerns
-- Searches the web for similar implementations and official documentation to validate patterns
-- Reports what's done well, what's concerning, and concrete recommendations
+- **Track A — Quality & Architecture**: senior-engineer review covering correctness, performance, error handling, naming, and maintainability. Searches the web for similar implementations and official documentation to validate patterns.
+- **Track B — Hunt & Disprove**: adversarial pass that actively tries to break the code — looking for security vulnerabilities, race conditions, edge cases, and logic flaws. Forms hypotheses and attempts to disprove them.
+- **Consensus synthesis**: merges findings from both tracks, resolves disagreements, and delivers a unified report with what's done well, what's concerning, and concrete recommendations.
+
+### Bug Hunting
+
+> **Zed skills** — `skills/bug-hunt/` and `skills/bug-hunt-diff/`, invoked via `/bug-hunt` and `/bug-hunt-diff` or auto-detected. No MCP server dependency.
+
+Two skills for proactive vulnerability discovery:
+
+**`/bug-hunt`**: deep, multi-stage sweep across the codebase. Runs 8 stages with parallel hunters, adversarial validation, and exploit chaining. Supports quick/standard/deep scan modes. Stack-agnostic.
+
+**`/bug-hunt-diff`**: lightweight, diff-scoped variant. Runs on uncommitted changes or the last commit. Use after finishing a feature for a fast security/logic pass. Also used as Track B of `/code-review`.
 
 ### Design Workflows
 
@@ -229,7 +254,7 @@ Configure via env vars in your Zed settings: `SUPER_DEV_VOICE` (voice name), `SU
 
 For projects that fork or customize an upstream template repository. Run `/upstream-merge` to start a guided merge workflow.
 
-**Setup**: call `upstream_status` with `remote_url` to configure your upstream remote. Creates `.upstream.json` with:
+**Setup**: call `upstream_status` with `remote_url` to configure your upstream remote. Creates `.upstream/config.json` with:
 
 - **Policies**: files to `always_ours` (keep your version), `always_theirs` (take upstream), or `manual_review` (always stop and ask)
 - **reTimestampMigrations**: By default (`true`), upstream Supabase database migrations are dynamically re-timestamped to the moment of the merge to prevent chronological execution errors in your CI/CD pipelines. Set to `false` to disable this behavior.

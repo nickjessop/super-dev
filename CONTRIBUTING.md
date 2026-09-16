@@ -1,6 +1,6 @@
 # Contributing to super-dev
 
-Thanks for your interest in contributing! This is an MCP server for Zed that gives your AI coding agent superpowers — spec-driven workflows, thread history, voice mode, and more. We'd love your help making it better.
+Thanks for your interest in contributing! This is an MCP server for Zed that gives your AI coding agent superpowers — spec-driven workflows, code review, bug hunting, design workflows, voice mode, and more. We'd love your help making it better.
 
 ## Quick Start
 
@@ -41,16 +41,30 @@ export const myTools: ToolDef[] = [
 ];
 ```
 
-2. Register it in `src/index.ts` by importing your tools array and adding a registration loop.
+2. Register it in `src/index.ts`:
+   - Import your tools array
+   - Add a registration loop (see existing examples in the file)
+   - If your tool belongs to a feature group, add entries to `TOOL_GROUPS` so users can disable it via `SUPER_DEV_DISABLE`
 
 **Key conventions:**
 - Use `ok()` and `err()` helpers for consistent tool results
 - Schema is a plain object of `zod` types (not wrapped in `z.object()`)
 - Keep tool names `snake_case`
+- If your tool should be disableable, register it in `TOOL_GROUPS` with a group name (e.g. `my_tool: "mygroup"`)
 
 ## Adding a New Prompt
 
 Prompts are slash commands exposed to the AI agent. Just drop a `.md` file in the `prompts/` directory. The filename becomes the prompt name.
+
+## Adding a Zed Skill
+
+Skills are pure-instruction prompts that live outside the MCP server — they're auto-detected by Zed and don't require a server round-trip.
+
+1. Create a directory in `skills/<name>/` with a `SKILL.md` file
+2. The first paragraph of `SKILL.md` becomes the skill's description for auto-detection
+3. Run `/super-dev-update` (or call the `super_dev_update` tool) to symlink it into `~/.agents/skills/`
+
+Use skills for instruction-only prompts with no MCP tool dependencies (e.g. code-review, design, bug-hunt). Use MCP prompts in `prompts/` when the prompt needs to orchestrate MCP tools.
 
 ## Adding Project Rules
 
