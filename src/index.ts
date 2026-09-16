@@ -21,6 +21,7 @@ import { threadHistoryTools } from "./lib/thread-history.js";
 import { ttsTools } from "./lib/tts-tools.js";
 import { updateTools } from "./lib/update-tools.js";
 import { upstreamTools } from "./lib/upstream-tools.js";
+import { todoTools } from "./lib/todo-tools.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const promptsDir = join(__dirname, "..", "prompts");
@@ -54,6 +55,9 @@ const TOOL_GROUPS: Record<string, string> = {
   upstream_verify: "upstream",
   upstream_complete: "upstream",
   upstream_abort: "upstream",
+  todo_write: "todo",
+  todo_read: "todo",
+  todo_clear: "todo",
 };
 
 const PROMPT_GROUPS: Record<string, string> = {
@@ -372,7 +376,7 @@ if (isToolEnabled("spec_analyze")) {
 }
 
 // Tools that do NOT need the project root.
-for (const tool of [...threadHistoryTools, ...ttsTools, ...updateTools]) {
+for (const tool of [...threadHistoryTools, ...ttsTools, ...updateTools, ...todoTools]) {
   if (!isToolEnabled(tool.name)) continue;
 
   server.registerTool(

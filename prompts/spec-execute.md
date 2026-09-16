@@ -87,5 +87,6 @@ Move to the next wave of tasks. Continue until all tasks are complete or you hit
   2. Skip the task and continue with tasks that do not depend on it
   3. When execution pauses or completes, surface all blocked tasks and their questions in a summary
   - Only stop entirely if the design itself needs revision (fundamental architecture issue).
+- **Do NOT use todo list tools** (`todo_write`, `todo_read`, `todo_clear`) during spec execution. Specs have their own task tracking via `tasks.md` and `spec_task_complete`.
 
 Begin by identifying the spec (Step 1), then load context and assess progress before executing.
