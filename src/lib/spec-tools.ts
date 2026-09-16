@@ -532,9 +532,15 @@ function parseTaskReferences(tasksContent: string): { taskId: string; refs: stri
     const refs: string[] = [];
 
     // Check inline on the same line
-    const inlineMatch = task.raw.match(/(?:_Requirements?:|Requirements?:)\s*([^_)]+)/i);
+    // Capture valid criterion IDs: N.M (like 1.1, 1.2) or NF{N} or P{N}
+    // Stops at HTML comment end (-->) or closing paren or underscore (for italic fmt)
+    const inlineMatch = task.raw.match(/(?:_Requirements?:|Requirements?:)\s*([^_)+\->]+)/i);
     if (inlineMatch) {
-      refs.push(...inlineMatch[1].split(",").map(r => r.trim()).filter(Boolean));
+      // Extract only valid criterion IDs (avoid capturing HTML comment endings like -->)
+      const idMatches = inlineMatch[1].match(/(?:\d+\.\d+|NF\d+|P\d+)/g);
+      if (idMatches) {
+        refs.push(...idMatches);
+      }
     }
 
     // Check body lines below (indented further than this task, until next task line)
@@ -542,9 +548,13 @@ function parseTaskReferences(tasksContent: string): { taskId: string; refs: stri
       for (let j = i + 1; j < lines.length; j++) {
         const nextTask = parseTask(lines[j]);
         if (nextTask) break;
-        const bodyMatch = lines[j].match(/(?:_Requirements?:|Requirements?:)\s*([^_)]+)/i);
+        const bodyMatch = lines[j].match(/(?:_Requirements?:|Requirements?:)\s*([^_)+\->]+)/i);
         if (bodyMatch) {
-          refs.push(...bodyMatch[1].split(",").map(r => r.trim()).filter(Boolean));
+          // Extract only valid criterion IDs (avoid capturing HTML comment endings like -->)
+          const idMatches = bodyMatch[1].match(/(?:\d+\.\d+|NF\d+|P\d+)/g);
+          if (idMatches) {
+            refs.push(...idMatches);
+          }
           break;
         }
       }
