@@ -330,17 +330,21 @@ export const threadHistoryTools: ToolDef[] = [
       }
       const matches: SearchMatch[] = [];
 
+      const queryTerms = query.split(/\s+/).filter(Boolean);
+
       for (const row of rows) {
         try {
           const data = readThreadData(row.id);
           const text = extractThreadText(data);
+          const lowerText = text.toLowerCase();
 
-          if (text.toLowerCase().includes(query)) {
+          if (queryTerms.every((term) => lowerText.includes(term))) {
             const lines = text.split("\n");
             const matchingLines: string[] = [];
 
             for (let i = 0; i < lines.length; i++) {
-              if (lines[i].toLowerCase().includes(query)) {
+              const lowerLine = lines[i].toLowerCase();
+              if (queryTerms.some((term) => lowerLine.includes(term))) {
                 const start = Math.max(0, i - 1);
                 const end = Math.min(lines.length - 1, i + 1);
                 const snippet = lines
@@ -532,7 +536,9 @@ export const threadHistoryTools: ToolDef[] = [
           const extracted = extractMessageText(allMessages[i]);
           if (!extracted) continue;
 
-          if (extracted.text.toLowerCase().includes(searchFilter)) {
+          const searchTerms = searchFilter.split(/\s+/).filter(Boolean);
+          const lowerText = extracted.text.toLowerCase();
+          if (searchTerms.every((term) => lowerText.includes(term))) {
             matches.push(
               `## ${extracted.role} (message ${i + 1}/${totalCount})\n\n${truncateText(extracted.text)}`,
             );
