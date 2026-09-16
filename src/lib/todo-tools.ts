@@ -115,7 +115,7 @@ export const todoTools: ToolDef[] = [
   {
     name: "todo_write",
     description:
-      "Create or update a todo list to track progress on a multi-step task. " +
+      "When undertaking a complex task with 3+ steps (and no active spec), create a todo list to track progress and keep the user informed. " +
       "Omit id to create a new list; include id to update an existing one. " +
       "Send the complete goal and tasks array each time (full replacement). " +
       "Do not use this tool when executing a spec — specs have their own task tracking.",
