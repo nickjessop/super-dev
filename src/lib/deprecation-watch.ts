@@ -16,7 +16,7 @@ import type {
   DeprecationWatcher,
 } from "../types.js";
 
-const CLIENTS_KNOWN_TO_LACK_RESOURCES = new Set(["Zed"]);
+const CLIENTS_KNOWN_TO_LACK_RESOURCES = new Set<string>();
 
 function flagFile(projectRoot: string): string {
   return join(projectRoot, ".super-dev-flags.json");

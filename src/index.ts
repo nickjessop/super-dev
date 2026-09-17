@@ -10,7 +10,7 @@ import { fileURLToPath } from "url";
 import { z } from "zod";
 import type { AppContext } from "./types.js";
 import { createDeprecationWatch } from "./lib/deprecation-watch.js";
-import { listAllRules, readRule, rulesTools } from "./lib/rules.js";
+import { listAllRules, readRule } from "./lib/rules.js";
 import {
   specTools,
   specAnalyze,
@@ -41,7 +41,6 @@ const TOOL_GROUPS: Record<string, string> = {
   spec_approve: "spec",
   spec_task_complete: "spec",
   spec_analyze: "spec",
-  load_rules: "rules",
   thread_active: "threads",
   thread_list: "threads",
   thread_read: "threads",
@@ -333,7 +332,7 @@ function syncAnalyzeVisibility(): void {
 }
 
 // Tools that need the project root resolved before running.
-for (const tool of [...specTools, ...rulesTools]) {
+for (const tool of specTools) {
   if (!isToolEnabled(tool.name)) continue;
 
   // spec_analyze is registered separately with dynamic visibility

@@ -17,7 +17,7 @@ Read `PRODUCT.md` and `DESIGN.md` from the project root if they exist. Quote the
 
 **If either is missing** — do the review against general best practices, but note that running `/design` to create them would make future reviews more precise.
 
-Also call `load_rules()` to pull in any project rules that apply.
+Also check for project conventions in `AGENTS.md`, `CLAUDE.md`, or `.rules/` that define project styling rules.
 
 ### 2. Identify the target
 

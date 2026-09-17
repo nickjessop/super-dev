@@ -86,7 +86,7 @@ Present each finding as an **A/B question** (A = keep as-is, B = specific revisi
 
 **Before drafting the design, do targeted research.** This is non-negotiable — but be surgical about it.
 
-1. Call `load_rules()` to pull in always-included project rules (and `load_rules({ filePath })` for any specific files you'll be touching). These constrain your design choices to match the project's conventions.
+1. **Gather project standards**: Check for and read project standard files that exist (`AGENTS.md`, `CLAUDE.md`, `.rules/`, `CONTRIBUTING.md`). These constrain your design choices to match the project's conventions.
 2. **Look up a minimum of 5 web resources** before drafting. These should include:
    - Official documentation for libraries/APIs/frameworks you're integrating with
    - Existing solutions to the same or similar problems (blog posts, GitHub repos, Stack Overflow)

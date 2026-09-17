@@ -94,7 +94,7 @@ All features are enabled by default. Disable what you don't need with the `SUPER
 |-------|-------|--------|
 | `spec` | spec_create, spec_read, spec_status, spec_approve, spec_task_complete, spec_analyze | /spec-plan, /spec-execute |
 | `update` | super_dev_update | /super-dev-update |
-| `rules` | load_rules + rule:// resources | — |
+| `rules` | rule:// resources | — |
 | `threads` | thread_active, thread_list, thread_read, thread_search | — |
 | `voice` | voice_mode | /toggle-voice-mode |
 | `upstream` | upstream_status + all merge tools | /upstream-merge |
@@ -123,7 +123,6 @@ All features are enabled by default. Disable what you don't need with the `SUPER
 | `spec_approve` | Approve current phase and advance to the next |
 | `spec_task_complete` | Mark a task complete; parent tasks auto-commit |
 | `spec_analyze` | Analyze requirements for quality issues (ambiguity, conflicts, completeness, testability) |
-| `load_rules` | Load project rules from `.rules/` with glob-based auto-matching |
 | `thread_active` | List open/active sidebar threads across all workspaces with live status |
 | `thread_list` | List recent Zed agent conversation threads (supports `active_only`) |
 | `thread_read` | Read a thread by ID with pagination and search |
@@ -139,7 +138,7 @@ Upstream merge-resolution tools (`upstream_categorize_changes`, `upstream_resolv
 
 ### Resources
 
-Every rule in `.rules/` is exposed as a `rule://<name>` MCP Resource. Rules are also available via the `load_rules` tool.
+Every rule in `.rules/` is exposed as a `rule://<name>` MCP Resource. Agents also read conventions directly using standard file inspection (`AGENTS.md`, `CLAUDE.md`, `.rules/`).
 
 ---
 
@@ -203,30 +202,18 @@ Two skills for building and evaluating UI:
 - Accessibility and responsive audit
 - Persona-based red flag analysis
 
-### Project Rules
+### Project Rules & Convention Cascade
 
-Rules are markdown files in your project's `.rules/` directory that give the agent project-specific context. Each rule has YAML front-matter controlling when it's loaded:
+Project standards live in standard files (`AGENTS.md`, `CLAUDE.md`, `DESIGN.md`, or the `.rules/` directory). Agents discover and inspect them directly using standard file reading without requiring extra tool round-trips.
 
-```yaml
----
-inclusion: always              # loaded every time load_rules is called
----
-```
+Rules in `.rules/` are also exposed as `rule://<name>` MCP resources for clients that support active resource binding. Each rule can have YAML front-matter:
 
 ```yaml
 ---
-inclusion: auto                # loaded only when working on matching files
-fileMatchPattern: "src/**/*.tsx"
+description: TypeScript conventions and strict mode patterns
+fileMatchPattern: "src/**/*.ts"
 ---
 ```
-
-```yaml
----
-inclusion: manual              # loaded only when explicitly requested
----
-```
-
-The `load_rules` tool uses glob matching so the agent only receives rules relevant to the file it's working on, keeping context focused. Rules are also exposed as `rule://<name>` MCP resources.
 
 ### Conversation History
 

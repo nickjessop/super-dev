@@ -11,7 +11,7 @@ I might want to build something new, refine something existing, or describe a di
 
 ## Design Memory
 
-Before doing any design work, check for `PRODUCT.md` and `DESIGN.md` at the project root. Also call `load_rules()` to pull in any project rules that apply.
+Before doing any design work, check for `PRODUCT.md` and `DESIGN.md` at the project root (as well as any design/style conventions in `AGENTS.md`, `CLAUDE.md`, or `.rules/`).
 
 **Both exist** → load them. Quote relevant lines as you make decisions so your design choices trace back to the project's intent.
 
