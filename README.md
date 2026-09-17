@@ -95,7 +95,7 @@ All features are enabled by default. Disable what you don't need with the `SUPER
 | `spec` | spec_create, spec_read, spec_status, spec_approve, spec_task_complete, spec_analyze | /spec-plan, /spec-execute |
 | `update` | super_dev_update | /super-dev-update |
 | `rules` | load_rules + rule:// resources | — |
-| `threads` | thread_list, thread_read, thread_search | — |
+| `threads` | thread_active, thread_list, thread_read, thread_search | — |
 | `voice` | voice_mode | /toggle-voice-mode |
 | `upstream` | upstream_status + all merge tools | /upstream-merge |
 | `todo` | todo_write, todo_read, todo_clear | — |
@@ -106,6 +106,7 @@ All features are enabled by default. Disable what you don't need with the `SUPER
 
 | Command | Purpose |
 |---------|---------|
+| `/agent-collab` | Orchestrate autonomous multi-turn debate/collaboration between sub-agents |
 | `/spec-plan` | Drive a requirements → design → tasks workflow with idea pressure-testing and web research |
 | `/spec-execute` | Orchestrate implementation using sub-agents for each task |
 | `/super-dev-update` | Sync skills, pull latest, and rebuild |
@@ -123,7 +124,8 @@ All features are enabled by default. Disable what you don't need with the `SUPER
 | `spec_task_complete` | Mark a task complete; parent tasks auto-commit |
 | `spec_analyze` | Analyze requirements for quality issues (ambiguity, conflicts, completeness, testability) |
 | `load_rules` | Load project rules from `.rules/` with glob-based auto-matching |
-| `thread_list` | List recent Zed agent conversation threads |
+| `thread_active` | List open/active sidebar threads across all workspaces with live status |
+| `thread_list` | List recent Zed agent conversation threads (supports `active_only`) |
 | `thread_read` | Read a thread by ID with pagination and search |
 | `thread_search` | Full-text search across conversation content |
 | `voice_mode` | Toggle TTS with macOS speech synthesis |
@@ -230,11 +232,21 @@ The `load_rules` tool uses glob matching so the agent only receives rules releva
 
 Search and read past Zed agent threads directly from the agent panel. Useful for recovering context from previous sessions, finding where a decision was made, or referencing past work.
 
-> **macOS only.** Reads from Zed's `threads.db` SQLite database with zstd decompression.
+> **macOS only.** Reads from Zed's `threads.db` SQLite database with zstd decompression and `0-stable/db.sqlite` for active sidebar state.
 
-- **`thread_list`**: browse recent threads with summaries, timestamps, and project folders. Filter by project.
+- **`thread_active`**: view currently open, unarchived chats across all Zed workspaces, with titles, projects, and last-interaction times.
+- **`thread_list`**: browse recent threads with summaries, timestamps, and project folders. Filter by project, search query, or `active_only: true`.
 - **`thread_search`**: full-text search across conversation content (not just titles). Decompresses zstd-compressed thread data and searches the actual messages.
 - **`thread_read`**: read a specific thread. Large threads (20+ messages) return a table of contents first; use offset or search to navigate to specific sections. Supports message truncation to manage context usage.
+
+### Multi-Agent Collaboration (`/agent-collab`)
+
+Work out tough architectural decisions, API contracts, refactors, or bug investigations autonomously using Zed's native `spawn_agent`.
+
+- Initiates a 2-to-3 round structured debate between specialized personas (e.g. Systems Architect vs SRE, Backend vs Frontend, Builder vs Adversary).
+- Uses `session_id` to maintain stateful context across turns for each sub-agent without human copy-pasting.
+- Synthesizes findings into an ADR-style deliverable with agreed direction, accepted trade-offs, and concrete next steps.
+- Can ingest context from existing or active threads via `thread_active` and `thread_read`.
 
 ### Voice Mode
 

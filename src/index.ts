@@ -42,6 +42,7 @@ const TOOL_GROUPS: Record<string, string> = {
   spec_task_complete: "spec",
   spec_analyze: "spec",
   load_rules: "rules",
+  thread_active: "threads",
   thread_list: "threads",
   thread_read: "threads",
   thread_search: "threads",

@@ -17,6 +17,117 @@ const THREADS_DB = join(
   "Library/Application Support/Zed/threads/threads.db",
 );
 
+const ZED_STATE_DB = join(
+  process.env.HOME!,
+  "Library/Application Support/Zed/db/0-stable/db.sqlite",
+);
+
+interface ActiveThreadRow {
+  session_id: string;
+  title: string;
+  folder_paths?: string;
+  interacted_at?: string;
+  updated_at?: string;
+  data_size?: number;
+}
+
+function queryActiveThreads(options?: {
+  project_filter?: string;
+  search?: string;
+  limit?: number;
+}): ActiveThreadRow[] {
+  if (!existsSync(ZED_STATE_DB) || !existsSync(THREADS_DB)) {
+    return [];
+  }
+
+  const conditions = [
+    "s.archived = 0",
+    "s.session_id IS NOT NULL",
+    "s.session_id != ''",
+  ];
+
+  if (options?.project_filter) {
+    const filter = options.project_filter.replace(/'/g, "''");
+    conditions.push(`s.folder_paths LIKE '%${filter}%'`);
+  }
+
+  if (options?.search) {
+    const search = options.search.replace(/'/g, "''");
+    conditions.push(
+      `(s.title LIKE '%${search}%' OR t.summary LIKE '%${search}%')`,
+    );
+  }
+
+  const limit = Math.min(options?.limit || 20, 100);
+  const whereClause = `WHERE ${conditions.join(" AND ")}`;
+
+  try {
+    const sql = `ATTACH DATABASE '${ZED_STATE_DB}' AS zed_state; SELECT s.session_id, COALESCE(NULLIF(s.title, ''), NULLIF(t.summary, ''), 'Untitled Conversation') as title, s.folder_paths, s.interacted_at, s.updated_at, length(t.data) as data_size FROM zed_state.sidebar_threads s LEFT JOIN threads t ON s.session_id = t.id ${whereClause} ORDER BY s.interacted_at DESC LIMIT ${limit};`;
+    const result = execSync(
+      `sqlite3 -json -readonly "${THREADS_DB}" ${JSON.stringify(sql)}`,
+      {
+        encoding: "utf-8",
+        maxBuffer: 10 * 1024 * 1024,
+        timeout: 10000,
+      },
+    );
+    const trimmed = result.trim();
+    if (!trimmed) return [];
+    return JSON.parse(trimmed) as ActiveThreadRow[];
+  } catch {
+    // Fallback: query zed_state directly without attach if join fails
+    try {
+      const fallbackConditions = [
+        "archived = 0",
+        "session_id IS NOT NULL",
+        "session_id != ''",
+      ];
+      if (options?.project_filter) {
+        const filter = options.project_filter.replace(/'/g, "''");
+        fallbackConditions.push(`folder_paths LIKE '%${filter}%'`);
+      }
+      if (options?.search) {
+        const search = options.search.replace(/'/g, "''");
+        fallbackConditions.push(`title LIKE '%${search}%'`);
+      }
+      const sql = `SELECT session_id, COALESCE(NULLIF(title, ''), 'Untitled Conversation') as title, folder_paths, interacted_at, updated_at FROM sidebar_threads WHERE ${fallbackConditions.join(" AND ")} ORDER BY interacted_at DESC LIMIT ${limit};`;
+      const result = execSync(
+        `sqlite3 -json -readonly "${ZED_STATE_DB}" ${JSON.stringify(sql)}`,
+        {
+          encoding: "utf-8",
+          maxBuffer: 10 * 1024 * 1024,
+          timeout: 10000,
+        },
+      );
+      const trimmed = result.trim();
+      if (!trimmed) return [];
+      return JSON.parse(trimmed) as ActiveThreadRow[];
+    } catch {
+      return [];
+    }
+  }
+}
+
+function formatActiveThreads(rows: ActiveThreadRow[]): string {
+  if (rows.length === 0) {
+    return "No active Zed threads found in the sidebar matching your criteria.";
+  }
+
+  const lines = rows.map((r, i) => {
+    const interacted = r.interacted_at
+      ? new Date(r.interacted_at).toLocaleString()
+      : "unknown";
+    const project = r.folder_paths || "unknown";
+    const sizeKb = r.data_size ? Math.round(r.data_size / 1024) : 0;
+    const estMessages = r.data_size
+      ? Math.round(r.data_size / 2048) || 1
+      : "?";
+    return `${i + 1}. **${r.title}**\n   ID: \`${r.session_id}\`\n   Active in: \`${project}\`\n   Last Interaction: ${interacted} | ~${sizeKb}KB (~${estMessages} msgs)`;
+  });
+
+  return `## Active Zed Agent Threads (${rows.length} open in sidebar)\n\n${lines.join("\n\n")}`;
+}
+
 function queryDb(sql: string): string {
   if (!existsSync(THREADS_DB)) {
     throw new Error(
@@ -140,7 +251,33 @@ function summarizeMessages(
   return messages;
 }
 
+const threadActiveSchema = {
+  limit: z
+    .number()
+    .optional()
+    .describe("Max number of active threads to return (default: 20, max: 100)"),
+  project_filter: z
+    .string()
+    .optional()
+    .describe(
+      "Filter active threads to those used in a specific project folder path " +
+        "(substring match on folder_paths). E.g. 'runby' or 'super-dev'",
+    ),
+  search: z
+    .string()
+    .optional()
+    .describe(
+      "Search active thread titles/summaries for this text (case-insensitive substring match)",
+    ),
+};
+
 const threadListSchema = {
+  active_only: z
+    .boolean()
+    .optional()
+    .describe(
+      "If true, only return active/open threads currently in the Zed sidebar (unarchived). Default: false",
+    ),
   limit: z
     .number()
     .optional()
@@ -228,13 +365,55 @@ const threadReadSchema = {
 
 export const threadHistoryTools: ToolDef[] = [
   {
+    name: "thread_active",
+    description:
+      "List currently open/active agent chat threads in the Zed sidebar across all workspaces, " +
+      "showing their IDs, titles, project folder paths, and last interaction timestamps.",
+    schema: threadActiveSchema,
+    handler: async (args, _ctx): Promise<ToolResult> => {
+      const rows = queryActiveThreads({
+        project_filter: args.project_filter as string | undefined,
+        search: args.search as string | undefined,
+        limit: args.limit as number | undefined,
+      });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: formatActiveThreads(rows),
+          },
+        ],
+      };
+    },
+  },
+
+  {
     name: "thread_list",
     description:
       "List recent Zed agent conversation threads. Shows thread ID, summary/title, " +
       "last updated time, and which project folder it was used in. " +
+      "Supports filtering by active_only to show only open sidebar chats. " +
       "Use this to find past conversations you want to search or reference.",
     schema: threadListSchema,
     handler: async (args, _ctx): Promise<ToolResult> => {
+      if (args.active_only) {
+        const rows = queryActiveThreads({
+          project_filter: args.project_filter as string | undefined,
+          search: args.search as string | undefined,
+          limit: args.limit as number | undefined,
+        });
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: formatActiveThreads(rows),
+            },
+          ],
+        };
+      }
+
       const limit = Math.min((args.limit as number) || 20, 100);
 
       let whereClause = "";
