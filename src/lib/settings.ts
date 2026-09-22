@@ -4,7 +4,9 @@ import type { SuperDevArchConfig, SuperDevConfig } from "../types.js";
 
 export type { SuperDevArchConfig, SuperDevConfig };
 
-export const SUPER_DEV_DIR = ".super-dev";
+export const ZED_DIR = ".zed";
+export const SUPER_DEV_SUBDIR = "super-dev";
+export const SUPER_DEV_DIR = ".super-dev"; // Legacy root directory
 export const SUPER_DEV_CONFIG_FILE = "config.json";
 
 export const DEFAULT_ARCH_CONFIG: SuperDevArchConfig = {
@@ -13,21 +15,60 @@ export const DEFAULT_ARCH_CONFIG: SuperDevArchConfig = {
 };
 
 /**
- * Returns the path to the project's `.super-dev` directory.
+ * Returns the path to the project's primary `.zed/super-dev` directory.
  */
-export function getSuperDevDir(projectRoot: string): string {
+export function getZedSuperDevDir(projectRoot: string): string {
+  return join(projectRoot, ZED_DIR, SUPER_DEV_SUBDIR);
+}
+
+/**
+ * Returns the path to the legacy `.super-dev` directory at root.
+ */
+export function getLegacySuperDevDir(projectRoot: string): string {
   return join(projectRoot, SUPER_DEV_DIR);
 }
 
 /**
- * Returns the path to `<projectRoot>/.super-dev/config.json`.
+ * Returns the active Super Dev directory, preferring `.zed/super-dev/` with
+ * fallback to legacy `.super-dev/` if it already exists.
  */
-export function getSuperDevConfigPath(projectRoot: string): string {
-  return join(getSuperDevDir(projectRoot), SUPER_DEV_CONFIG_FILE);
+export function getSuperDevDir(projectRoot: string): string {
+  const zedDir = getZedSuperDevDir(projectRoot);
+  if (existsSync(zedDir)) {
+    return zedDir;
+  }
+
+  const legacyDir = getLegacySuperDevDir(projectRoot);
+  if (existsSync(legacyDir)) {
+    return legacyDir;
+  }
+
+  return zedDir;
 }
 
 /**
- * Safely loads and parses `<projectRoot>/.super-dev/config.json`.
+ * Returns the path to the config file:
+ * 1. `<projectRoot>/.zed/super-dev/config.json` if it exists
+ * 2. `<projectRoot>/.super-dev/config.json` if it exists
+ * 3. Defaults to `<projectRoot>/.zed/super-dev/config.json` for new configs.
+ */
+export function getSuperDevConfigPath(projectRoot: string): string {
+  const zedConfig = join(getZedSuperDevDir(projectRoot), SUPER_DEV_CONFIG_FILE);
+  if (existsSync(zedConfig)) {
+    return zedConfig;
+  }
+
+  const legacyConfig = join(getLegacySuperDevDir(projectRoot), SUPER_DEV_CONFIG_FILE);
+  if (existsSync(legacyConfig)) {
+    return legacyConfig;
+  }
+
+  return zedConfig;
+}
+
+/**
+ * Safely loads and parses configuration from `.zed/super-dev/config.json`
+ * (or fallback `.super-dev/config.json`).
  * If missing or invalid JSON, logs a warning and returns `{}`.
  * Never throws unhandled exceptions.
  */
@@ -67,8 +108,8 @@ export function loadSuperDevConfig(projectRoot: string): SuperDevConfig {
 }
 
 /**
- * Resolves architecture configuration by merging `.super-dev/config.json` overrides
- * with defaults (`source: "docs/architecture"`, `reference: "AGENTS.md"`).
+ * Resolves architecture configuration by merging config overrides with
+ * defaults (`source: "docs/architecture"`, `reference: "AGENTS.md"`).
  * Guarantees a valid, non-empty `source` and `reference`.
  * Never throws unhandled exceptions.
  */
@@ -102,10 +143,10 @@ export function getArchConfig(projectRoot: string): SuperDevArchConfig {
 }
 
 /**
- * Ensures that `.super-dev/` is listed in `<projectRoot>/.gitignore` if `.gitignore` exists.
+ * Ensures that `.zed/` (or legacy `.super-dev/`) is listed in `<projectRoot>/.gitignore` if `.gitignore` exists.
  * Does nothing if `.gitignore` does not exist.
  */
-export function ensureGitignored(projectRoot: string): void {
+export function ensureGitignored(projectRoot: string, dirToIgnore: string = ".zed/"): void {
   try {
     const gitignorePath = join(projectRoot, ".gitignore");
     if (!existsSync(gitignorePath)) {
@@ -114,19 +155,15 @@ export function ensureGitignored(projectRoot: string): void {
 
     const content = readFileSync(gitignorePath, "utf-8");
     const lines = content.split(/\r?\n/);
+    const targetBase = dirToIgnore.replace(/^\/+|\/+$/g, "");
     const alreadyIgnored = lines.some((line) => {
-      const trimmed = line.trim();
-      return (
-        trimmed === ".super-dev" ||
-        trimmed === ".super-dev/" ||
-        trimmed === "/.super-dev" ||
-        trimmed === "/.super-dev/"
-      );
+      const trimmed = line.trim().replace(/^\/+|\/+$/g, "");
+      return trimmed === targetBase;
     });
 
     if (!alreadyIgnored) {
       const needsLeadingNewline = content.length > 0 && !content.endsWith("\n");
-      const appendText = `${needsLeadingNewline ? "\n" : ""}.super-dev/\n`;
+      const appendText = `${needsLeadingNewline ? "\n" : ""}${targetBase}/\n`;
       writeFileSync(gitignorePath, content + appendText, "utf-8");
     }
   } catch (err) {
@@ -141,27 +178,31 @@ export function ensureGitignored(projectRoot: string): void {
 export const ensureSuperDevGitignored = ensureGitignored;
 
 /**
- * Saves or updates configuration to `<projectRoot>/.super-dev/config.json`.
- * Creates the `.super-dev` directory if needed and ensures it is ignored in `.gitignore`.
- * Writes formatted JSON with a trailing newline.
+ * Saves or updates configuration.
+ * Saves to `.super-dev/config.json` if it already exists, otherwise defaults to `.zed/super-dev/config.json`.
+ * Creates the directory if needed and writes formatted JSON with a trailing newline.
  */
 export function saveSuperDevConfig(
   projectRoot: string,
   config: SuperDevConfig
 ): void {
   try {
-    const dir = getSuperDevDir(projectRoot);
+    const configPath = getSuperDevConfigPath(projectRoot);
+    const dir = join(configPath, "..");
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
 
-    ensureGitignored(projectRoot);
+    if (configPath.includes(".super-dev")) {
+      ensureGitignored(projectRoot, ".super-dev/");
+    } else {
+      ensureGitignored(projectRoot, ".zed/");
+    }
 
-    const configPath = getSuperDevConfigPath(projectRoot);
     writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
   } catch (err) {
     console.error(
-      `[super-dev] Error saving config to ${getSuperDevConfigPath(projectRoot)}: ${
+      `[super-dev] Error saving config: ${
         err instanceof Error ? err.message : String(err)
       }`
     );
@@ -169,7 +210,7 @@ export function saveSuperDevConfig(
 }
 
 /**
- * Updates `<projectRoot>/.super-dev/config.json` by shallow merging top-level fields.
+ * Updates configuration by shallow merging top-level fields (and deep merging architecture).
  */
 export function updateSuperDevConfig(
   projectRoot: string,

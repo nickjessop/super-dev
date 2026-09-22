@@ -284,9 +284,9 @@ Interactive multi-diagram canvas for exploring, inspecting, and presenting syste
 - **Client-side export**: Header controls allow one-click **Export HTML** (a standalone, self-contained portable HTML bundle for offline viewing) and **Export SVG** (vector graphic with embedded styling). Both run entirely in the browser with zero server roundtrips.
 - **Zero-config auto-scaffolding**: If called when no architecture documentation exists, `arch_view` automatically scaffolds `docs/architecture/overview.md` with a clean starter Mermaid template and links it under `## Project Reference Docs` in `AGENTS.md`.
 
-#### Configuration Schema (`.super-dev/config.json`)
+#### Configuration Schema (`.zed/super-dev/config.json`)
 
-Super Dev uses a unified configuration file at `.super-dev/config.json`:
+Super Dev uses a unified configuration file at `.zed/super-dev/config.json` (with automatic fallback to `.super-dev/config.json` for backward compatibility):
 
 ```json
 {

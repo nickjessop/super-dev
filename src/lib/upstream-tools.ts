@@ -21,6 +21,8 @@ import {
 } from "../types.js";
 import {
   getSuperDevDir,
+  getZedSuperDevDir,
+  getLegacySuperDevDir,
   loadSuperDevConfig,
   updateSuperDevConfig,
   ensureGitignored,
@@ -42,7 +44,15 @@ const LEGACY_CONFIG_FILE = ".upstream.json";
 const LEGACY_MERGE_STATE_FILE = ".upstream-merge-state.json";
 
 function getSuperDevMergeStatePath(projectRoot: string): string {
-  return join(getSuperDevDir(projectRoot), SUPER_DEV_MERGE_STATE_FILE);
+  const zedPath = join(getZedSuperDevDir(projectRoot), SUPER_DEV_MERGE_STATE_FILE);
+  if (existsSync(zedPath)) {
+    return zedPath;
+  }
+  const legacyPath = join(getLegacySuperDevDir(projectRoot), SUPER_DEV_MERGE_STATE_FILE);
+  if (existsSync(legacyPath)) {
+    return legacyPath;
+  }
+  return zedPath;
 }
 
 function getUpstreamDir(projectRoot: string): string {
@@ -243,7 +253,8 @@ function saveMergeState(projectRoot: string, state: MergeState): void {
 
 function removeMergeState(projectRoot: string): void {
   const paths = [
-    getSuperDevMergeStatePath(projectRoot),
+    join(getZedSuperDevDir(projectRoot), SUPER_DEV_MERGE_STATE_FILE),
+    join(getLegacySuperDevDir(projectRoot), SUPER_DEV_MERGE_STATE_FILE),
     getLegacyMergeStatePath(projectRoot),
     join(projectRoot, LEGACY_MERGE_STATE_FILE),
   ];
