@@ -33,6 +33,7 @@ import {
   getCommentFilePath,
   activeCommentThreads,
   clearCommentCache,
+  clearLongPollWaiters,
   STARTER_OVERVIEW_TEMPLATE,
 } from "../src/lib/arch-tools.js";
 import type { AppContext, CommentThread } from "../src/types.js";
@@ -197,20 +198,42 @@ test("Task 3.1: scanArchitectureDir discovers all .md files and prioritizes over
 // Task 3.2: Native Node.js HTTP Server & Debounced SSE Live Watcher Tests
 // ---------------------------------------------------------------------------
 
-function httpGet(url: string): Promise<{ statusCode: number; headers: http.IncomingHttpHeaders; body: string }> {
+function httpRequest(
+  url: string,
+  options: { method?: string; headers?: Record<string, string>; body?: string } = {}
+): Promise<{ statusCode: number; headers: http.IncomingHttpHeaders; body: string }> {
   return new Promise((resolve, reject) => {
-    http.get(url, (res: http.IncomingMessage) => {
-      let data = "";
-      res.on("data", (chunk: Buffer | string) => (data += chunk));
-      res.on("end", () => {
-        resolve({
-          statusCode: res.statusCode || 0,
-          headers: res.headers,
-          body: data,
+    const parsedUrl = new URL(url);
+    const req = http.request(
+      {
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port,
+        path: parsedUrl.pathname + parsedUrl.search,
+        method: options.method || "GET",
+        headers: options.headers || {},
+      },
+      (res: http.IncomingMessage) => {
+        let data = "";
+        res.on("data", (chunk: Buffer | string) => (data += chunk));
+        res.on("end", () => {
+          resolve({
+            statusCode: res.statusCode || 0,
+            headers: res.headers,
+            body: data,
+          });
         });
-      });
-    }).on("error", reject);
+      }
+    );
+    req.on("error", reject);
+    if (options.body) {
+      req.write(options.body);
+    }
+    req.end();
   });
+}
+
+function httpGet(url: string): Promise<{ statusCode: number; headers: http.IncomingHttpHeaders; body: string }> {
+  return httpRequest(url, { method: "GET" });
 }
 
 test("Task 3.2: startArchServer binds to 127.0.0.1 and serves GET / and GET /api/diagrams", async () => {
@@ -420,21 +443,37 @@ test("Task 1.1: archViewHandler handles listen, reply, end stubs cleanly while p
   try {
     const ctx: AppContext = { projectRoot: root };
 
-    // listen stub
-    const listenRes = await archViewHandler({ action: "listen" }, ctx);
+    // listen stub with short timeout for test
+    const listenRes = await archViewHandler({ action: "listen", timeout_ms: 20 }, ctx);
     assert.strictEqual(listenRes.isError, undefined);
-    assert.ok(listenRes.content[0].text.includes("listen"));
+    assert.ok(
+      listenRes.content[0].text.toLowerCase().includes("listen") ||
+      listenRes.content[0].text.toLowerCase().includes("timeout")
+    );
 
-    // reply stub
-    const replyRes = await archViewHandler({ action: "reply", commentId: "c-1", text: "ok" }, ctx);
+    // reply action with existing thread
+    saveComments(root, "overview.md", [
+      {
+        id: "c-1",
+        doc: "overview.md",
+        x: 0,
+        y: 0,
+        status: "open",
+        messages: [{ id: "m-1", author: "user", text: "question", createdAt: Date.now() }],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+    ]);
+    const replyRes = await archViewHandler({ action: "reply", commentId: "c-1", text: "ok", doc: "overview.md" }, ctx);
     assert.strictEqual(replyRes.isError, undefined);
-    assert.ok(replyRes.content[0].text.includes("reply"));
+    assert.ok(replyRes.content[0].text.toLowerCase().includes("reply"));
 
     // end stub
     const endRes = await archViewHandler({ action: "end" }, ctx);
     assert.strictEqual(endRes.isError, undefined);
-    assert.ok(endRes.content[0].text.includes("end"));
+    assert.ok(endRes.content[0].text.toLowerCase().includes("end") || endRes.content[0].text.toLowerCase().includes("concluded"));
   } finally {
+    await stopAllArchServers();
     cleanup();
   }
 });
@@ -594,6 +633,105 @@ test("Task 4.1 & 4.3: MCP server registers arch_view and respects SUPER_DEV_DISA
   assert.strictEqual(
     disabledTools.includes("arch_view"),
     false,
-    "arch_view must be disabled when SUPER_DEV_DISABLE=arch"
+    "arch_view must NOT be registered when SUPER_DEV_DISABLE=arch"
   );
+});
+
+test("Task 2.1 & 2.2: comment REST API endpoints and long-poll bridge with rich context", async () => {
+  const { root, cleanup } = createTempProject();
+  try {
+    const archDir = join(root, "docs", "architecture");
+    scaffoldArchitecture(root, archDir);
+
+    const instance = await startArchServer({
+      projectRoot: root,
+      dirPath: archDir,
+    });
+
+    const baseUrl = `http://127.0.0.1:${instance.port}`;
+
+    // 1. Test POST /api/comments
+    const postPayload = {
+      doc: "overview.md",
+      nodeId: "API Gateway",
+      text: "Can we decouple this via message queue?",
+      x: 100,
+      y: 200,
+    };
+    const postRes = await httpRequest(`${baseUrl}/api/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(postPayload),
+    });
+    assert.strictEqual(postRes.statusCode, 200);
+    const postJson = JSON.parse(postRes.body);
+    assert.strictEqual(postJson.success, true);
+    assert.ok(postJson.thread.id);
+    const threadId = postJson.thread.id;
+
+    // 2. Test GET /api/comments?doc=overview.md
+    const getRes = await httpRequest(`${baseUrl}/api/comments?doc=overview.md`);
+    assert.strictEqual(getRes.statusCode, 200);
+    const getJson = JSON.parse(getRes.body);
+    assert.strictEqual(getJson.length, 1);
+    assert.strictEqual(getJson[0].id, threadId);
+
+    // 3. Test long-poll bridge with action: "listen" and rich context
+    clearLongPollWaiters();
+    const ctx: AppContext = { projectRoot: root };
+    const listenPromise = archViewHandler({ action: "listen", timeout_ms: 1000 }, ctx);
+
+    // Short delay to ensure waiter is active
+    await new Promise((r) => setTimeout(r, 20));
+
+    await httpRequest(`${baseUrl}/api/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: threadId,
+        doc: "overview.md",
+        text: "What queue technology do you recommend?",
+      }),
+    });
+
+    const listenResult = await listenPromise;
+    assert.strictEqual(listenResult.isError, undefined);
+    const listenText = listenResult.content[0].text;
+    assert.ok(listenText.includes("New Architecture Comment Received"));
+    assert.ok(listenText.includes("API Gateway") || listenText.includes("API"));
+    assert.ok(listenText.includes("What queue technology do you recommend?"));
+
+    // 4. Test action: "reply"
+    const replyRes = await archViewHandler(
+      { action: "reply", commentId: threadId, text: "We recommend Redis Streams or Kafka depending on volume.", doc: "overview.md" },
+      ctx
+    );
+    assert.strictEqual(replyRes.isError, undefined);
+    assert.ok(replyRes.content[0].text.includes("Reply Sent to Canvas"));
+
+    // 5. Test POST /api/comments/:id/resolve
+    const resolveRes = await httpRequest(`${baseUrl}/api/comments/${threadId}/resolve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ doc: "overview.md" }),
+    });
+    assert.strictEqual(resolveRes.statusCode, 200);
+    const resolveJson = JSON.parse(resolveRes.body);
+    assert.strictEqual(resolveJson.success, true);
+
+    // 6. Test POST /api/session/end
+    const endRes = await httpRequest(`${baseUrl}/api/session/end`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    assert.strictEqual(endRes.statusCode, 200);
+    const endJson = JSON.parse(endRes.body);
+    assert.strictEqual(endJson.success, true);
+
+    await stopArchServer(archDir);
+  } finally {
+    await stopAllArchServers();
+    cleanup();
+  }
 });
