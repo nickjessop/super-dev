@@ -24,6 +24,7 @@ import {
   stopAllArchServers,
   openBrowser,
   archViewHandler,
+  archTools,
   STARTER_OVERVIEW_TEMPLATE,
 } from "../src/lib/arch-tools.js";
 import type { AppContext } from "../src/types.js";
@@ -344,4 +345,99 @@ test("Task 3.3: archViewHandler rejects path traversal attempts in source and do
     await stopAllArchServers();
     cleanup();
   }
+});
+
+// ---------------------------------------------------------------------------
+// Task 4.1 & 4.3: MCP Tool Registration & Feature Group Tests
+// ---------------------------------------------------------------------------
+
+test("Task 4.1: archTools exports arch_view ToolDef with schema and handler", () => {
+  assert.strictEqual(archTools.length, 1);
+  const tool = archTools[0];
+  assert.strictEqual(tool.name, "arch_view");
+  assert.ok(tool.description.includes("architecture diagram viewer"));
+  assert.ok(tool.schema.doc);
+  assert.ok(tool.schema.source);
+  assert.ok(tool.schema.port);
+  assert.strictEqual(tool.handler, archViewHandler);
+});
+
+test("Task 4.1 & 4.3: MCP server registers arch_view and respects SUPER_DEV_DISABLE=arch", async () => {
+  const { spawn } = await import("node:child_process");
+
+  async function queryTools(disableEnv?: string): Promise<string[]> {
+    return new Promise((resolve, reject) => {
+      const env = { ...process.env, SUPER_DEV_PROJECT_ROOT: process.cwd() };
+      if (disableEnv !== undefined) {
+        env.SUPER_DEV_DISABLE = disableEnv;
+      } else {
+        delete env.SUPER_DEV_DISABLE;
+      }
+
+      const cp = spawn("npx", ["tsx", "src/index.ts"], {
+        env,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+
+      let stdout = "";
+      cp.stdout.on("data", (d: Buffer | string) => {
+        stdout += d.toString();
+        const lines = stdout.split("\n");
+        for (const line of lines) {
+          if (line.includes('"id":2')) {
+            try {
+              const parsed = JSON.parse(line);
+              if (parsed.result?.tools) {
+                const names = parsed.result.tools.map((t: { name: string }) => t.name);
+                cp.kill();
+                resolve(names);
+                return;
+              }
+            } catch {}
+          }
+        }
+      });
+
+      cp.on("error", reject);
+
+      const initMsg = JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2024-11-05",
+          capabilities: {},
+          clientInfo: { name: "test", version: "1.0" },
+        },
+      });
+      cp.stdin.write(initMsg + "\n");
+
+      setTimeout(() => {
+        const listMsg = JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/list",
+          params: {},
+        });
+        cp.stdin.write(listMsg + "\n");
+      }, 300);
+
+      setTimeout(() => {
+        cp.kill();
+        reject(new Error("Timeout waiting for tools/list response"));
+      }, 5000);
+    });
+  }
+
+  // When arch is not disabled, arch_view should be present
+  const defaultTools = await queryTools();
+  assert.ok(defaultTools.includes("arch_view"), "arch_view must be registered in MCP tools");
+
+  // When SUPER_DEV_DISABLE=arch is set, arch_view should be absent
+  const disabledTools = await queryTools("arch");
+  assert.strictEqual(
+    disabledTools.includes("arch_view"),
+    false,
+    "arch_view must be disabled when SUPER_DEV_DISABLE=arch"
+  );
 });

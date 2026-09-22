@@ -89,9 +89,10 @@ Your rule content here.
 
 ## Testing
 
-There's no test suite yet (contributions welcome!). For now:
+Run the test suite and verify TypeScript compilation:
 
 ```bash
+npx tsx --test test/*.test.ts
 npm run build   # type-check + compile — must pass cleanly
 ```
 

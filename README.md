@@ -15,6 +15,8 @@ Super Dev is an [MCP server](https://modelcontextprotocol.io/) for **Zed** that 
 
 🎨 **Design workflows**: build, refine, and review UI surfaces with design system memory (Zed skills)
 
+📊 **Architecture viewer**: interactive multi-diagram canvas with pan/zoom, live reload, and side-by-side node inspector
+
 ✅ **Task tracking**: lightweight todo lists for ad-hoc multi-step work outside of specs
 
 🔄 **Self-updating**: sync skills, pull latest, and rebuild from any project with a single command
@@ -99,6 +101,7 @@ All features are enabled by default. Disable what you don't need with the `SUPER
 | `voice` | voice_mode | /toggle-voice-mode |
 | `upstream` | upstream_status + all merge tools | /upstream-merge |
 | `todo` | todo_write, todo_read, todo_clear | — |
+| `arch` | arch_view | — |
 
 ## Quick Reference
 
@@ -123,6 +126,7 @@ All features are enabled by default. Disable what you don't need with the `SUPER
 | `spec_approve` | Approve current phase and advance to the next |
 | `spec_task_complete` | Mark a task complete; parent tasks auto-commit |
 | `spec_analyze` | Analyze requirements for quality issues (ambiguity, conflicts, completeness, testability) |
+| `arch_view` | Launch interactive architecture diagram viewer in browser with multi-diagram sidebar, pan/zoom canvas, live reload, and node inspector |
 | `thread_active` | List open/active sidebar threads across all workspaces with live status |
 | `thread_list` | List recent Zed agent conversation threads (supports `active_only`) |
 | `thread_read` | Read a thread by ID with pagination and search |
@@ -268,6 +272,43 @@ For projects that fork or customize an upstream template repository. Run `/upstr
 5. **Complete**: commit, merge to target branch, clean up
 
 Merge-resolution tools (`upstream_categorize_changes`, `upstream_resolve_file`, `upstream_resolve_batch`, `upstream_diff_file`, `upstream_verify`, `upstream_complete`, `upstream_abort`) are hidden until a merge is active, then disappear when it completes.
+
+### Architecture Viewer
+
+Interactive multi-diagram canvas for exploring, inspecting, and presenting system architectures. Run the `arch_view` tool to launch the browser viewer.
+
+- **Multi-diagram discovery & sidebar navigation**: Automatically discovers all `*.md` files in `docs/architecture/` (or your configured source directory) and renders them as a clickable sidebar navigation list with diagram titles, filenames, and item counts. Switch between architecture diagrams instantly without page reloads, with active diagrams synced to URL query params (`?doc=...`).
+- **Hardware-accelerated pan and zoom canvas**: Fluid navigation via CSS transforms. Hold <kbd>Spacebar</kbd> and drag or middle-click drag to pan; scroll wheel or pinch to zoom centered at your cursor. Floating viewport controls provide Zoom In (`+`), Zoom Out (`-`), Fit to View (`⛶`), and Reset (`100%`).
+- **Side-by-side node inspector drawer**: Click any node or subgraph in the active diagram to slide open a dedicated right-side inspector drawer (~400px wide) displaying structured status badges, summary, invariants, and constraints rendered from markdown via Marked.js. Clicked nodes receive an active `.node-selected` highlight ring and drop shadow, and the canvas smoothly auto-pans left if a clicked node is positioned underneath the drawer. Dismiss on `✕`, <kbd>Escape</kbd>, or clicking the canvas background.
+- **Ephemeral local HTTP server & debounced live watcher**: Spawns an ephemeral Node.js HTTP server bound strictly to `127.0.0.1` and watches markdown files with `fs.watch` debounced at 150ms. Real-time changes push to connected clients via Server-Sent Events (SSE), updating diagrams in real-time while preserving your active zoom and pan coordinates.
+- **Client-side export**: Header controls allow one-click **Export HTML** (a standalone, self-contained portable HTML bundle for offline viewing) and **Export SVG** (vector graphic with embedded styling). Both run entirely in the browser with zero server roundtrips.
+- **Zero-config auto-scaffolding**: If called when no architecture documentation exists, `arch_view` automatically scaffolds `docs/architecture/overview.md` with a clean starter Mermaid template and links it under `## Project Reference Docs` in `AGENTS.md`.
+
+#### Configuration Schema (`.super-dev/config.json`)
+
+Super Dev uses a unified configuration file at `.super-dev/config.json`:
+
+```json
+{
+  "architecture": {
+    "source": "docs/architecture",
+    "reference": "AGENTS.md"
+  },
+  "upstream": {
+    "remote": "upstream",
+    "branch": "main",
+    "policies": {
+      "always_ours": [],
+      "always_theirs": [],
+      "manual_review": []
+    },
+    "categories": {}
+  }
+}
+```
+
+- `architecture.source`: Directory containing architecture markdown files, or a specific file path (defaults to `"docs/architecture"`).
+- `architecture.reference`: Markdown documentation file where architecture links are referenced (defaults to `"AGENTS.md"`).
 
 ---
 

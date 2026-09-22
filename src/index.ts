@@ -22,6 +22,7 @@ import { ttsTools } from "./lib/tts-tools.js";
 import { updateTools } from "./lib/update-tools.js";
 import { upstreamTools } from "./lib/upstream-tools.js";
 import { todoTools } from "./lib/todo-tools.js";
+import { archTools } from "./lib/arch-tools.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const promptsDir = join(__dirname, "..", "prompts");
@@ -58,6 +59,7 @@ const TOOL_GROUPS: Record<string, string> = {
   todo_write: "todo",
   todo_read: "todo",
   todo_clear: "todo",
+  arch_view: "arch",
 };
 
 const PROMPT_GROUPS: Record<string, string> = {
@@ -390,6 +392,25 @@ for (const tool of [...threadHistoryTools, ...ttsTools, ...updateTools, ...todoT
 }
 
 for (const tool of upstreamTools) {
+  if (!isToolEnabled(tool.name)) continue;
+
+  let wrappedHandler: (args: Record<string, unknown>) => Promise<any> = async (args) => {
+    const rootErr = await ensureProjectRoot();
+    if (rootErr) return rootErr;
+    return tool.handler(args, ctx);
+  };
+
+  server.registerTool(
+    tool.name,
+    {
+      description: tool.description,
+      inputSchema: tool.schema,
+    },
+    wrappedHandler,
+  );
+}
+
+for (const tool of archTools) {
   if (!isToolEnabled(tool.name)) continue;
 
   let wrappedHandler: (args: Record<string, unknown>) => Promise<any> = async (args) => {
