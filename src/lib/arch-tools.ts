@@ -821,6 +821,7 @@ export interface ArchServerInstance {
   getDiagrams: () => ArchitectureDiagram[];
   broadcastSSE: (event: ArchServerEvent | ArchDiscussEvent) => void;
   close: () => Promise<void>;
+  getClientCount: () => number;
 }
 
 // Active server instances keyed by normalized target directory path
@@ -840,6 +841,24 @@ export function getActiveArchServers(): Map<string, ArchServerInstance> {
 export type LongPollWaiter = (event: ThreadListenEvent) => void;
 export let pendingListenWaiters: LongPollWaiter[] = [];
 export let unhandledEvents: ThreadListenEvent[] = [];
+export let isAgentListening = false;
+export let isSessionEnded = false;
+
+export function getAgentListening(): boolean {
+  return isAgentListening;
+}
+
+export function setAgentListening(listening: boolean, sessionEnded?: boolean): void {
+  isAgentListening = listening;
+  if (sessionEnded !== undefined) {
+    isSessionEnded = sessionEnded;
+  }
+  broadcastToActiveServers({
+    type: "agent_status",
+    listening,
+    ...(sessionEnded !== undefined ? { sessionEnded } : {}),
+  });
+}
 
 /**
  * Clears long-poll listener queue and unhandled events (used in tests and teardowns).
@@ -1088,6 +1107,7 @@ export async function startArchServer(
         "Access-Control-Allow-Origin": "*",
       });
       res.write(": connected\n\n");
+      res.write(`data: ${JSON.stringify({ type: "agent_status", listening: isAgentListening, sessionEnded: isSessionEnded })}\n\n`);
 
       sseClients.add(res);
       if (inactivityTimer) {
@@ -1611,6 +1631,7 @@ export async function startArchServer(
         server.close(() => resolve());
       });
     },
+    getClientCount: () => sseClients.size,
   };
 
   activeServers.set(normalizedDir, instance);
@@ -1896,7 +1917,17 @@ export async function archViewHandler(
   args: Record<string, unknown>,
   ctx: AppContext
 ): Promise<ToolResult> {
-  const action = typeof args.action === "string" ? args.action : "view";
+  let action = typeof args.action === "string" ? args.action : "view";
+
+  // Auto-detect reply action: if commentId is present, the caller is replying to a comment thread,
+  // even if action was omitted (defaulted to view by Zod) or explicitly set to view.
+  if (
+    typeof args.commentId === "string" &&
+    args.commentId.trim().length > 0 &&
+    (action === "view" || !action)
+  ) {
+    action = "reply";
+  }
 
   if (action === "listen") {
     const projectRoot = ctx.projectRoot;
@@ -1958,8 +1989,10 @@ export async function archViewHandler(
         ? Math.min(args.timeout_ms, 300000)
         : defaultTimeout;
 
+    setAgentListening(true);
     let event: ThreadListenEvent;
-    if (unhandledEvents.length > 0) {
+    try {
+      if (unhandledEvents.length > 0) {
       event = unhandledEvents.shift()!;
     } else {
       event = await new Promise<ThreadListenEvent>((resolve) => {
@@ -1986,6 +2019,9 @@ export async function archViewHandler(
         }, timeoutMs);
         timer.unref();
       });
+    }
+    } finally {
+      setAgentListening(false);
     }
 
     if (
@@ -2132,7 +2168,8 @@ export async function archViewHandler(
           const match = loaded.find((t) => t.id === commentId);
           if (match) {
             targetThread = match;
-            targetDoc = match.doc || file;
+            const docName = file.endsWith(".json") ? file.slice(0, -5) : file;
+            targetDoc = match.doc || docName;
             docThreads = loaded;
             break;
           }
@@ -2175,6 +2212,7 @@ export async function archViewHandler(
   }
 
   if (action === "end") {
+    setAgentListening(false, true);
     const projectRoot = ctx.projectRoot;
     const config = getArchConfig(projectRoot);
 
@@ -2685,8 +2723,11 @@ export async function archViewHandler(
     activeDiagram.filename
   )}`;
 
-  // Launch browser (never fails the tool response)
-  await openBrowser(previewUrl);
+  // Launch browser only if no active browser tabs are connected, or if explicitly forced
+  const forceBrowser = args.forceBrowser === true;
+  if (forceBrowser || instance.getClientCount() === 0) {
+    await openBrowser(previewUrl);
+  }
 
   // Return formatted response
   const diagramsList = diagrams
@@ -2715,7 +2756,7 @@ export const archViewSchema = {
     .optional()
     .default("view")
     .describe(
-      "Action to perform: 'view' (launch viewer), 'listen' (wait for browser comment), 'reply' (post agent response), 'end' (finish session & get ADR summary), 'history' (list past architecture discussions)."
+      "Action to perform: 'view' (launch viewer), 'listen' (wait for browser comment), 'reply' (post agent response; auto-inferred if commentId provided), 'end' (finish session & get ADR summary), 'history' (list past architecture discussions)."
     ),
   doc: z
     .string()
@@ -2734,7 +2775,15 @@ export const archViewSchema = {
   commentId: z
     .string()
     .optional()
-    .describe("Target comment thread ID for 'reply' action."),
+    .describe(
+      "Target comment thread ID for 'reply' action. Providing this automatically infers action: 'reply'."
+    ),
+  forceBrowser: z
+    .boolean()
+    .optional()
+    .describe(
+      "Force opening a new browser tab even if the architecture viewer is already connected in an active browser tab."
+    ),
   text: z
     .string()
     .optional()

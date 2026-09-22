@@ -84,8 +84,12 @@ assert(content.includes('/api/comments'), 'Communicates with /api/comments endpo
 assert(content.includes('cancelDraftComment'), 'Supports canceling draft comment on Escape (Req 2.6)');
 assert(content.includes('nodeEl') && content.includes('extractNodeId'), 'Detects clicked node and anchors comment pin (Req 2.4)');
 
-// Task 3.2: Threaded popover speech bubble with agent reply & typing state
-assert(content.includes('comment-popover'), 'Renders threaded popover card (Req 4.2)');
+// Task 3.2: Threaded popover speech bubble / right drawer panel with agent reply & typing state
+assert(content.includes('comment-popover'), 'Renders threaded popover card / panel (Req 4.2)');
+assert(content.includes('id="comment-panel"'), 'Contains #comment-panel right-side drawer panel container');
+assert(content.includes('--comment-panel-width') || content.includes('comment-panel'), 'Defines right-side comment panel drawer styling');
+assert(content.includes('renderCommentPanel'), 'Implements renderCommentPanel for right side panel');
+assert(content.includes('commentPanel.addEventListener(\'wheel\'') && content.includes('stopPropagation'), 'Isolates wheel events on comment panel to prevent canvas scroll conflict');
 assert(content.includes('agent_typing') && content.includes('Agent is thinking...'), 'Displays typing indicator when agent is thinking (Req 4.3)');
 assert(content.includes('agent_reply'), 'Handles agent_reply SSE event with markdown formatting (Req 4.1, 4.2)');
 assert(content.includes('/resolve'), 'Supports POST /api/comments/:id/resolve (Req 4.2)');

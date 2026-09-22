@@ -173,7 +173,8 @@ export type ArchDiscussEvent =
   | { type: "agent_typing"; commentId: string }
   | { type: "agent_reply"; commentId: string; message: CommentMessage }
   | { type: "thread_resolved"; commentId: string }
-  | { type: "session_ended"; summary: string };
+  | { type: "session_ended"; summary: string }
+  | { type: "agent_status"; listening: boolean; sessionEnded?: boolean };
 
 export interface ArchitectureDiscussionFrontmatter {
   title: string;

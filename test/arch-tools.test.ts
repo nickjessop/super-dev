@@ -499,6 +499,15 @@ test("Task 1.1: archViewHandler handles listen, reply, end stubs cleanly while p
     assert.strictEqual(replyRes.isError, undefined);
     assert.ok(replyRes.content[0].text.toLowerCase().includes("reply"));
 
+    // Auto-detect reply when action is omitted or defaulted to view
+    const autoReply1 = await archViewHandler({ commentId: "c-1", text: "auto-reply omitted", doc: "overview.md" }, ctx);
+    assert.strictEqual(autoReply1.isError, undefined);
+    assert.ok(autoReply1.content[0].text.toLowerCase().includes("reply"));
+
+    const autoReply2 = await archViewHandler({ action: "view", commentId: "c-1", text: "auto-reply with view action", doc: "overview.md" }, ctx);
+    assert.strictEqual(autoReply2.isError, undefined);
+    assert.ok(autoReply2.content[0].text.toLowerCase().includes("reply"));
+
     // end stub
     const endRes = await archViewHandler({ action: "end" }, ctx);
     assert.strictEqual(endRes.isError, undefined);
