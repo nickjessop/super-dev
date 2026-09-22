@@ -41,7 +41,10 @@ assert(content.includes('transform-origin: 0 0') && content.includes('translate3
 assert(content.includes('isSpacePressed') && content.includes('space-pressed'), 'Implements Spacebar grab tool state tracking (Req 5.2)');
 assert(content.includes('cursor: grab') && content.includes('cursor: grabbing'), 'Applies grab/grabbing cursors for drag tool (Req 5.2)');
 assert(content.includes('e.button === 1'), 'Supports middle-click drag panning (Req 5.3)');
+assert(content.includes('state.panX -= e.deltaX') && content.includes('state.panY -= e.deltaY'), 'Supports two-finger trackpad panning (FigJam style)');
 assert(content.includes('addEventListener(\'wheel\'') && content.includes('deltaY'), 'Implements cursor-centered wheel/pinch zooming (Req 5.4)');
+assert(content.includes('e.ctrlKey || e.metaKey') && content.includes('Math.exp'), 'Implements gentle exponential zoom curve on pinch / Cmd+Wheel');
+assert(content.includes('gesturestart') && content.includes('preventDefault'), 'Prevents native Safari gesture zoom interference');
 assert(content.includes('dragDistance > 4'), 'Treats movement > 4px as drag to suppress accidental click (Req 5.5)');
 assert(content.includes('id="btn-zoom-in"') && content.includes('id="btn-zoom-out"'), 'Provides floating Zoom In and Zoom Out controls (Req 5.6)');
 assert(content.includes('id="btn-zoom-reset"') && content.includes('id="btn-fit-view"'), 'Provides Reset 100% and Fit to View controls (Req 5.6)');

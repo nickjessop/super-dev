@@ -948,23 +948,38 @@
         }
       });
 
-      // Cursor-Centered Mouse Wheel & Pinch Zoom
+      // Cursor-Centered Mouse Wheel, Trackpad Two-Finger Pan & Pinch Zoom (FigJam style)
       viewport.addEventListener('wheel', (e) => {
         e.preventDefault();
-        let factor;
-        if (e.ctrlKey) {
-          // Pinch gesture on trackpad
-          factor = Math.exp(-e.deltaY * 0.01);
+
+        // Zoom: Trackpad pinch gesture (e.ctrlKey) or Cmd/Ctrl + Wheel
+        if (e.ctrlKey || e.metaKey) {
+          // Gentle, smooth exponential zoom curve without jarring jumps
+          const sensitivity = 0.0035;
+          const clampedDelta = Math.max(-50, Math.min(50, e.deltaY));
+          const factor = Math.exp(-clampedDelta * sensitivity);
+          zoomAt(factor, e.clientX, e.clientY);
         } else {
-          // Standard mouse wheel
-          factor = e.deltaY < 0 ? 1.15 : 0.87;
+          // Pan: Two-finger trackpad drag or standard wheel scroll
+          if (e.shiftKey && !e.deltaX) {
+            // Shift + scroll = horizontal pan
+            state.panX -= e.deltaY;
+          } else {
+            state.panX -= e.deltaX;
+            state.panY -= e.deltaY;
+          }
+          updateTransform();
         }
-        zoomAt(factor, e.clientX, e.clientY);
       }, { passive: false });
 
-      // Canvas Control Buttons
-      btnZoomIn.addEventListener('click', () => zoomAt(1.25));
-      btnZoomOut.addEventListener('click', () => zoomAt(0.8));
+      // Prevent native browser pinch-zoom in Safari/WebKit
+      viewport.addEventListener('gesturestart', (e) => e.preventDefault());
+      viewport.addEventListener('gesturechange', (e) => e.preventDefault());
+      viewport.addEventListener('gestureend', (e) => e.preventDefault());
+
+      // Canvas Control Buttons (gentle 12% zoom steps)
+      btnZoomIn.addEventListener('click', () => zoomAt(1.12));
+      btnZoomOut.addEventListener('click', () => zoomAt(0.89));
       btnZoomReset.addEventListener('click', resetZoom);
       btnFitView.addEventListener('click', fitToView);
 
