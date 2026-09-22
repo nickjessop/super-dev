@@ -93,6 +93,36 @@ export interface SuperDevConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Architecture Viewer Data Models & Events
+// ---------------------------------------------------------------------------
+
+export interface DiagramSection {
+  id: string;          // e.g. "5" or "placement-chain"
+  title: string;       // e.g. "5. Placement Chain"
+  status?: string;     // e.g. "new", "existing", "deprecated"
+  summary?: string;    // Brief description
+  rawContent: string;  // Full section markdown
+}
+
+export interface ArchitectureDiagram {
+  id: string;          // Filename without .md (e.g. "credit-pipeline")
+  filename: string;    // Filename with .md (e.g. "credit-pipeline.md")
+  title: string;       // Display title from frontmatter or first # Heading
+  mermaid: string;     // Mermaid diagram source code
+  sections: Record<string, DiagramSection>; // Keyed by section ID/title
+  updatedAt: number;   // Timestamp of file mtime
+}
+
+export interface ViewerInitialPayload {
+  activeId: string;
+  diagrams: ArchitectureDiagram[];
+}
+
+export type ArchServerEvent =
+  | { type: "file_change"; id: string; diagram: ArchitectureDiagram }
+  | { type: "dir_change"; diagrams: ArchitectureDiagram[] };
+
+// ---------------------------------------------------------------------------
 // Upstream merge state (.upstream/merge-state.json)
 // ---------------------------------------------------------------------------
 
