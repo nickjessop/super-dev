@@ -648,8 +648,15 @@
     }
 
     #btn-tool-comment {
-      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       position: relative;
+    }
+    #btn-tool-comment svg {
+      width: 15px;
+      height: 15px;
+      fill: currentColor;
     }
     #btn-tool-comment.active {
       background: var(--accent-blue-bg);
@@ -1073,7 +1080,6 @@
         <svg viewBox="0 0 16 16"><path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 13.25 15H2.75A1.75 1.75 0 0 1 1 13.25Zm4.5 10.75V2.5h-2.75a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25Zm1.5 0h6.25a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25H7Z"></path></svg>
       </button>
       <div class="app-title">
-        <svg viewBox="0 0 16 16"><path d="M1.75 1.5a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25ZM0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75 1.75 0 0 1 0 14.25Zm9.22 3.72a.75.75 0 0 1 1.06 0L12 7.19l1.72-1.72a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042L13.06 8.25l1.72 1.72a.75.75 0 0 1-.018 1.042.75.75 0 0 1-1.042.018L12 9.31l-1.72 1.72a.75.75 0 0 1-1.06-1.06l1.72-1.72-1.72-1.72a.75.75 0 0 1 0-1.06ZM3.75 4.5h3.5a.75.75 0 0 1 0 1.5h-3.5a.75.75 0 0 1 0-1.5ZM3 8a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 0 1.5h-3.5A.75.75 0 0 1 3 8Zm.75 2.5a.75.75 0 0 0 0 1.5h3.5a.75.75 0 0 0 0-1.5Z"></path></svg>
         <span>Super Dev Architecture</span>
       </div>
       <div class="divider"></div>
@@ -1083,7 +1089,7 @@
     <div class="header-center">
       <div class="live-status" title="Server-Sent Events Connection">
         <div id="live-dot" class="live-dot"></div>
-        <span id="live-text">Connecting</span>
+        <span id="live-text">Connected</span>
       </div>
     </div>
 
@@ -1129,7 +1135,9 @@
 
       <!-- Floating Controls -->
       <div id="canvas-controls">
-        <button id="btn-tool-comment" class="ctrl-btn canvas-btn" title="Comment Tool (C)">💬</button>
+        <button id="btn-tool-comment" class="ctrl-btn canvas-btn" title="Comment Tool (C)">
+          <svg viewBox="0 0 16 16"><path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h4.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path></svg>
+        </button>
         <div class="ctrl-divider"></div>
         <button id="btn-zoom-in" class="ctrl-btn" title="Zoom In (+)">
           <svg viewBox="0 0 16 16"><path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z"></path></svg>
@@ -1552,7 +1560,7 @@
           draftPin.className = 'comment-pin draft active';
           draftPin.style.left = `${x}px`;
           draftPin.style.top = `${y}px`;
-          draftPin.innerHTML = '💬';
+          draftPin.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor"><path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h4.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path></svg>';
           layer.appendChild(draftPin);
 
           const draftPopover = createDraftPopover(x, y, nodeId);
@@ -2343,12 +2351,12 @@
 
         sse.onopen = () => {
           liveDot.className = 'live-dot connected';
-          liveText.textContent = 'Live';
+          liveText.textContent = 'Connected';
         };
 
         sse.onerror = () => {
           liveDot.className = 'live-dot disconnected';
-          liveText.textContent = 'Offline';
+          liveText.textContent = 'Disconnected';
         };
 
         sse.onmessage = (e) => {
