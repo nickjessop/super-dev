@@ -68,6 +68,7 @@ const PROMPT_GROUPS: Record<string, string> = {
   "toggle-voice-mode": "voice",
   "super-dev-update": "update",
   "upstream-merge": "upstream",
+  "arch": "arch",
 };
 
 function isToolEnabled(toolName: string): boolean {

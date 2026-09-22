@@ -11,6 +11,7 @@ import {
   readFileSync,
   writeFileSync,
   mkdirSync,
+  readdirSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -35,6 +36,9 @@ import {
   clearCommentCache,
   clearLongPollWaiters,
   STARTER_OVERVIEW_TEMPLATE,
+  parseDiscussionFrontmatter,
+  appendDecisionHistory,
+  synthesizeDiscussionMetadata,
 } from "../src/lib/arch-tools.js";
 import type { AppContext, CommentThread } from "../src/types.js";
 
@@ -409,6 +413,8 @@ test("Task 1.1: archViewSchema validates action enum and defaults to view", () =
   assert.strictEqual(schemaObj.parse({ action: "listen" }).action, "listen");
   assert.strictEqual(schemaObj.parse({ action: "reply" }).action, "reply");
   assert.strictEqual(schemaObj.parse({ action: "end" }).action, "end");
+  assert.strictEqual(schemaObj.parse({ action: "history" }).action, "history");
+  assert.strictEqual(schemaObj.parse({ action: "history", query: "redis" }).query, "redis");
 
   // 3. Invalid action throws validation error
   assert.throws(() => {
@@ -560,7 +566,9 @@ test("Task 1.2: loadComments and saveComments handle caching and disk persistenc
 test("Task 4.1 & 4.3: MCP server registers arch_view and respects SUPER_DEV_DISABLE=arch", async () => {
   const { spawn } = await import("node:child_process");
 
-  async function queryTools(disableEnv?: string): Promise<string[]> {
+  async function queryToolsAndPrompts(
+    disableEnv?: string
+  ): Promise<{ tools: string[]; prompts: string[] }> {
     return new Promise((resolve, reject) => {
       const env = { ...process.env, SUPER_DEV_PROJECT_ROOT: process.cwd() };
       if (disableEnv !== undefined) {
@@ -575,17 +583,35 @@ test("Task 4.1 & 4.3: MCP server registers arch_view and respects SUPER_DEV_DISA
       });
 
       let stdout = "";
+      let tools: string[] = [];
       cp.stdout.on("data", (d: Buffer | string) => {
         stdout += d.toString();
         const lines = stdout.split("\n");
         for (const line of lines) {
-          if (line.includes('"id":2')) {
+          if (line.includes('"id":2') && tools.length === 0) {
             try {
               const parsed = JSON.parse(line);
               if (parsed.result?.tools) {
-                const names = parsed.result.tools.map((t: { name: string }) => t.name);
+                tools = parsed.result.tools.map((t: { name: string }) => t.name);
+                const listPromptsMsg = JSON.stringify({
+                  jsonrpc: "2.0",
+                  id: 3,
+                  method: "prompts/list",
+                  params: {},
+                });
+                cp.stdin.write(listPromptsMsg + "\n");
+              }
+            } catch {}
+          }
+          if (line.includes('"id":3')) {
+            try {
+              const parsed = JSON.parse(line);
+              if (parsed.result?.prompts) {
+                const promptNames = parsed.result.prompts.map(
+                  (p: { name: string }) => p.name
+                );
                 cp.kill();
-                resolve(names);
+                resolve({ tools, prompts: promptNames });
                 return;
               }
             } catch {}
@@ -624,16 +650,28 @@ test("Task 4.1 & 4.3: MCP server registers arch_view and respects SUPER_DEV_DISA
     });
   }
 
-  // When arch is not disabled, arch_view should be present
-  const defaultTools = await queryTools();
-  assert.ok(defaultTools.includes("arch_view"), "arch_view must be registered in MCP tools");
+  // When arch is not disabled, arch_view and arch prompt should be present
+  const defaultResult = await queryToolsAndPrompts();
+  assert.ok(
+    defaultResult.tools.includes("arch_view"),
+    "arch_view must be registered in MCP tools"
+  );
+  assert.ok(
+    defaultResult.prompts.includes("arch"),
+    "arch prompt must be registered in MCP prompts"
+  );
 
-  // When SUPER_DEV_DISABLE=arch is set, arch_view should be absent
-  const disabledTools = await queryTools("arch");
+  // When SUPER_DEV_DISABLE=arch is set, arch_view and arch prompt should be absent
+  const disabledResult = await queryToolsAndPrompts("arch");
   assert.strictEqual(
-    disabledTools.includes("arch_view"),
+    disabledResult.tools.includes("arch_view"),
     false,
     "arch_view must NOT be registered when SUPER_DEV_DISABLE=arch"
+  );
+  assert.strictEqual(
+    disabledResult.prompts.includes("arch"),
+    false,
+    "arch prompt must NOT be registered when SUPER_DEV_DISABLE=arch"
   );
 });
 
@@ -730,6 +768,257 @@ test("Task 2.1 & 2.2: comment REST API endpoints and long-poll bridge with rich 
     assert.strictEqual(endJson.success, true);
 
     await stopArchServer(archDir);
+  } finally {
+    await stopAllArchServers();
+    cleanup();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Wave 4: Discussion Archiver, ADR Generator & History Tests (Task 4.2 & 4.3)
+// ---------------------------------------------------------------------------
+
+test("Task 4.2 & 4.3: action: 'end' creates discussion archive in docs/architecture/discussions/ and updates doc decision history", async () => {
+  const { root, cleanup } = createTempProject();
+  try {
+    const ctx: AppContext = { projectRoot: root };
+    const archDir = join(root, "docs", "architecture");
+    mkdirSync(archDir, { recursive: true });
+
+    // 1. Create an active document with an existing decision history section
+    const overviewPath = join(archDir, "overview.md");
+    const initialOverview =
+      "# System Architecture Overview\n\n" +
+      "```mermaid\n" +
+      "flowchart TD\n" +
+      "    Auth --> Redis\n" +
+      "```\n\n" +
+      "## 1. Authentication\n" +
+      "Handles user auth tokens.\n\n" +
+      "## Architecture Decision History\n" +
+      "- **[2026-09-01] Baseline Architecture**: Initial baseline architecture overview. ([Full Discussion](discussions/2026-09-01-baseline.md))\n";
+    writeFileSync(overviewPath, initialOverview, "utf-8");
+
+    // 2. Add comment threads for Redis node
+    saveComments(root, "overview.md", [
+      {
+        id: "thread-redis-1",
+        doc: "overview.md",
+        nodeId: "Redis",
+        x: 150.5,
+        y: 220.0,
+        status: "resolved",
+        messages: [
+          {
+            id: "msg-1",
+            author: "user",
+            text: "Should we use Redis cluster with Sentinel or read replicas?",
+            createdAt: 1700000000000,
+          },
+          {
+            id: "msg-2",
+            author: "agent",
+            text: "Recommend Redis cluster with 3 read replicas for automatic failover and read scaling.",
+            createdAt: 1700000010000,
+          },
+        ],
+        createdAt: 1700000000000,
+        updatedAt: 1700000010000,
+      },
+    ]);
+
+    // 3. Call action: "end"
+    const endRes = await archViewHandler(
+      {
+        action: "end",
+        doc: "overview.md",
+        text: "Title: Redis Cluster Token Caching\nSummary: Adopted Redis cluster with read replicas for auth token caching.",
+      },
+      ctx
+    );
+
+    assert.strictEqual(endRes.isError, undefined);
+    const endText = endRes.content[0].text;
+    assert.ok(endText.includes("Architecture Discussion Concluded & Archived"));
+    assert.ok(endText.includes("Redis Cluster Token Caching"));
+    assert.ok(endText.includes("overview.md"));
+    assert.ok(endText.includes("`Redis`"));
+
+    // 4. Verify discussions archive directory and file
+    const discussionsDir = join(archDir, "discussions");
+    assert.ok(existsSync(discussionsDir));
+
+    const discussionFiles = readdirSync(discussionsDir).filter((f) =>
+      f.includes("redis-cluster-token-caching")
+    );
+    assert.strictEqual(discussionFiles.length, 1);
+    const archiveFile = discussionFiles[0];
+
+    const archiveContent = readFileSync(join(discussionsDir, archiveFile), "utf-8");
+    const { frontmatter, body } = parseDiscussionFrontmatter(archiveContent);
+
+    // Frontmatter assertions
+    assert.strictEqual(frontmatter.title, "Redis Cluster Token Caching");
+    assert.strictEqual(frontmatter.doc, "overview.md");
+    assert.deepStrictEqual(frontmatter.nodes, ["Redis"]);
+    assert.strictEqual(
+      frontmatter.summary,
+      "Adopted Redis cluster with read replicas for auth token caching."
+    );
+    assert.match(frontmatter.date, /^\d{4}-\d{2}-\d{2}$/);
+
+    // Body content assertions
+    assert.ok(archiveContent.includes("# Redis Cluster Token Caching"));
+    assert.ok(archiveContent.includes("## Executive Summary"));
+    assert.ok(
+      archiveContent.includes(
+        "Adopted Redis cluster with read replicas for auth token caching."
+      )
+    );
+    assert.ok(archiveContent.includes("## Key Decisions & Trade-offs"));
+    assert.ok(archiveContent.includes("## Discussion Transcript"));
+    assert.ok(archiveContent.includes("### Thread 1: Node `Redis`"));
+    assert.ok(
+      archiveContent.includes(
+        "Should we use Redis cluster with Sentinel or read replicas?"
+      )
+    );
+    assert.ok(
+      archiveContent.includes(
+        "Recommend Redis cluster with 3 read replicas for automatic failover and read scaling."
+      )
+    );
+
+    // 5. Verify overview.md decision history was updated
+    const updatedOverview = readFileSync(overviewPath, "utf-8");
+    assert.ok(updatedOverview.includes("## Architecture Decision History"));
+    assert.ok(
+      updatedOverview.includes(
+        "- **[2026-09-01] Baseline Architecture**: Initial baseline architecture overview."
+      ),
+      "Original baseline entry must be preserved"
+    );
+    assert.ok(
+      updatedOverview.includes(
+        `Redis Cluster Token Caching**: Adopted Redis cluster with read replicas for auth token caching. ([Full Discussion](discussions/${archiveFile}))`
+      ),
+      "New decision entry with link to archive file must be appended"
+    );
+
+    // 6. Test second "end" without pre-existing decision history in a fresh doc
+    const pipelinePath = join(archDir, "pipeline.md");
+    writeFileSync(pipelinePath, "# Processing Pipeline\n\nContent here.\n", "utf-8");
+    const endRes2 = await archViewHandler(
+      {
+        action: "end",
+        doc: "pipeline.md",
+        text: "Pipeline Queue Buffer. Chose SQS FIFO for ordering.",
+      },
+      ctx
+    );
+    assert.strictEqual(endRes2.isError, undefined);
+    const updatedPipeline = readFileSync(pipelinePath, "utf-8");
+    assert.ok(updatedPipeline.includes("## Architecture Decision History"));
+    assert.ok(updatedPipeline.includes("Pipeline Queue Buffer"));
+    assert.ok(updatedPipeline.includes("([Full Discussion](discussions/"));
+  } finally {
+    await stopAllArchServers();
+    cleanup();
+  }
+});
+
+test("Task 4.2 & 4.3: action: 'history' lists all discussions, filters by doc, and filters by query", async () => {
+  const { root, cleanup } = createTempProject();
+  try {
+    const ctx: AppContext = { projectRoot: root };
+    const archDir = join(root, "docs", "architecture");
+    const discussionsDir = join(archDir, "discussions");
+    mkdirSync(discussionsDir, { recursive: true });
+
+    // Seed 3 discussion files
+    const d1 =
+      "---\n" +
+      'title: "Auth Token Caching"\n' +
+      "date: 2026-09-20\n" +
+      "doc: overview.md\n" +
+      'nodes: ["Auth", "Redis"]\n' +
+      'summary: "Decided to adopt Redis for fast token lookup and validation."\n' +
+      "---\n\n" +
+      "# Auth Token Caching\n\n" +
+      "## Executive Summary\nDecided to adopt Redis for fast token lookup and validation.\n\n" +
+      "## Discussion Transcript\n### Thread 1: Node `Redis`\n- **User**: How fast is Redis?\n- **Agent**: Sub-millisecond latency.\n";
+    writeFileSync(join(discussionsDir, "2026-09-20-auth-token-caching.md"), d1, "utf-8");
+
+    const d2 =
+      "---\n" +
+      'title: "Kafka Event Streaming"\n' +
+      "date: 2026-09-21\n" +
+      "doc: pipeline.md\n" +
+      'nodes: ["Ingest", "Kafka"]\n' +
+      'summary: "Switched from polling to Kafka event-driven stream processing."\n' +
+      "---\n\n" +
+      "# Kafka Event Streaming\n\n" +
+      "## Executive Summary\nSwitched from polling to Kafka event-driven stream processing.\n\n" +
+      "## Discussion Transcript\n### Thread 1: Node `Kafka`\n- **User**: What partition strategy?\n";
+    writeFileSync(join(discussionsDir, "2026-09-21-kafka-event-streaming.md"), d2, "utf-8");
+
+    const d3 =
+      "---\n" +
+      'title: "API Rate Limiting Ingress"\n' +
+      "date: 2026-09-22\n" +
+      "doc: overview.md\n" +
+      'nodes: ["Gateway"]\n' +
+      'summary: "Configured leaky bucket rate limiter on the public API gateway."\n' +
+      "---\n\n" +
+      "# API Rate Limiting Ingress\n\n" +
+      "## Executive Summary\nConfigured leaky bucket rate limiter on the public API gateway.\n";
+    writeFileSync(join(discussionsDir, "2026-09-22-api-rate-limiting.md"), d3, "utf-8");
+
+    // 1. List all discussions (unfiltered)
+    const listRes = await archViewHandler({ action: "history" }, ctx);
+    assert.strictEqual(listRes.isError, undefined);
+    const listText = listRes.content[0].text;
+    assert.ok(listText.includes("Architecture Discussion History (3 records)"));
+    assert.ok(listText.includes("Auth Token Caching"));
+    assert.ok(listText.includes("Kafka Event Streaming"));
+    assert.ok(listText.includes("API Rate Limiting Ingress"));
+    assert.ok(listText.includes("overview.md"));
+    assert.ok(listText.includes("pipeline.md"));
+
+    // 2. Filter by doc
+    const filterDocRes = await archViewHandler({ action: "history", doc: "pipeline.md" }, ctx);
+    assert.strictEqual(filterDocRes.isError, undefined);
+    const filterDocText = filterDocRes.content[0].text;
+    assert.ok(filterDocText.includes("Architecture Discussion History (1 record)"));
+    assert.ok(filterDocText.includes("Kafka Event Streaming"));
+    assert.ok(!filterDocText.includes("Auth Token Caching"));
+    assert.ok(!filterDocText.includes("API Rate Limiting Ingress"));
+
+    // 3. Filter by query (keyword in summary / content)
+    const filterQueryRes = await archViewHandler({ action: "history", query: "Redis" }, ctx);
+    assert.strictEqual(filterQueryRes.isError, undefined);
+    const filterQueryText = filterQueryRes.content[0].text;
+    assert.ok(filterQueryText.includes("Auth Token Caching"));
+    assert.ok(!filterQueryText.includes("Kafka Event Streaming"));
+
+    // 4. Filter by query matching node
+    const filterNodeRes = await archViewHandler({ action: "history", query: "Gateway" }, ctx);
+    assert.strictEqual(filterNodeRes.isError, undefined);
+    const filterNodeText = filterNodeRes.content[0].text;
+    assert.ok(filterNodeText.includes("API Rate Limiting Ingress"));
+    assert.ok(!filterNodeText.includes("Kafka Event Streaming"));
+
+    // 5. Query with no matches returns graceful message
+    const noMatchRes = await archViewHandler({ action: "history", query: "nonexistent_term" }, ctx);
+    assert.strictEqual(noMatchRes.isError, undefined);
+    assert.ok(noMatchRes.content[0].text.includes("No architecture discussions found"));
+
+    // 6. Non-existent discussions dir returns clean message
+    const emptyCtx: AppContext = { projectRoot: join(root, "empty-proj") };
+    mkdirSync(emptyCtx.projectRoot, { recursive: true });
+    const emptyRes = await archViewHandler({ action: "history" }, emptyCtx);
+    assert.strictEqual(emptyRes.isError, undefined);
+    assert.ok(emptyRes.content[0].text.includes("No discussion archives found"));
   } finally {
     await stopAllArchServers();
     cleanup();

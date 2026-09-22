@@ -18,6 +18,8 @@ import type {
   NodeContext,
   ThreadListenEvent,
   ArchDiscussEvent,
+  ArchitectureDiscussionFrontmatter,
+  ArchitectureDiscussionRecord,
 } from "../types.js";
 import { ok, err } from "../types.js";
 import { getArchConfig, getCommentsDir, ensureGitignored } from "./settings.js";
@@ -33,6 +35,8 @@ export type {
   NodeContext,
   ThreadListenEvent,
   ArchDiscussEvent,
+  ArchitectureDiscussionFrontmatter,
+  ArchitectureDiscussionRecord,
 };
 
 export { getCommentsDir };
@@ -406,6 +410,14 @@ export function parseArchitectureMarkdown(
             sections[strippedSlug] = section;
           }
         }
+      }
+
+      // Also index leading token before separator (e.g. "Upload1: Document Upload" -> "Upload1", "Mask - PII" -> "Mask")
+      const tokenMatch = headingTitle.match(/^([a-zA-Z0-9_-]+)\s*[:\-\—\·\|]/);
+      if (tokenMatch) {
+        const token = tokenMatch[1].trim();
+        sections[token] = section;
+        sections[token.toLowerCase()] = section;
       }
     }
 
@@ -1621,6 +1633,187 @@ export async function openBrowser(url: string): Promise<boolean> {
 }
 
 // ---------------------------------------------------------------------------
+// Architecture Discussion Archiver & History Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Parses YAML frontmatter and markdown body from an architecture discussion archive.
+ */
+export function parseDiscussionFrontmatter(content: string): {
+  frontmatter: ArchitectureDiscussionFrontmatter;
+  body: string;
+} {
+  const defaultFm: ArchitectureDiscussionFrontmatter = {
+    title: "",
+    date: "",
+    doc: "",
+    nodes: [],
+    summary: "",
+  };
+
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+  if (!match) {
+    const titleMatch = content.match(/^#\s+(.+)$/m);
+    return {
+      frontmatter: {
+        ...defaultFm,
+        title: titleMatch ? titleMatch[1].trim() : "Architecture Discussion",
+      },
+      body: content,
+    };
+  }
+
+  const yaml = match[1];
+  const body = match[2];
+  const fm: ArchitectureDiscussionFrontmatter = { ...defaultFm };
+
+  for (const line of yaml.split(/\r?\n/)) {
+    const colonIdx = line.indexOf(":");
+    if (colonIdx === -1) continue;
+    const key = line.slice(0, colonIdx).trim();
+    let val = line.slice(colonIdx + 1).trim();
+
+    // Strip wrapping quotes if present
+    if (
+      (val.startsWith('"') && val.endsWith('"')) ||
+      (val.startsWith("'") && val.endsWith("'"))
+    ) {
+      try {
+        val = JSON.parse(val);
+      } catch {
+        val = val.slice(1, -1);
+      }
+    }
+
+    if (key === "title") fm.title = val;
+    else if (key === "date") fm.date = val;
+    else if (key === "doc") fm.doc = val;
+    else if (key === "summary") fm.summary = val;
+    else if (key === "nodes") {
+      try {
+        const parsedNodes = JSON.parse(val);
+        if (Array.isArray(parsedNodes)) {
+          fm.nodes = parsedNodes.map((n) => String(n));
+        }
+      } catch {
+        const trimmed = val.replace(/^\[|\]$/g, "").trim();
+        fm.nodes = trimmed
+          ? trimmed.split(",").map((s) => s.trim().replace(/^['"]|['"]$/g, ""))
+          : [];
+      }
+    }
+  }
+
+  return { frontmatter: fm, body };
+}
+
+/**
+ * Appends or updates the '## Architecture Decision History' section in an architecture markdown file.
+ */
+export function appendDecisionHistory(content: string, entryLine: string): string {
+  const heading = "## Architecture Decision History";
+  const headingIdx = content.indexOf(heading);
+
+  if (headingIdx === -1) {
+    const trimmed = content.trimEnd();
+    return `${trimmed}\n\n${heading}\n${entryLine}\n`;
+  }
+
+  // Find the end of this section (the next heading of level 1 or 2, or EOF)
+  const afterHeading = content.slice(headingIdx + heading.length);
+  const nextHeadingMatch = afterHeading.match(/\n(#{1,2}\s+[^\n]+)/);
+
+  if (nextHeadingMatch && nextHeadingMatch.index !== undefined) {
+    const insertIdx = headingIdx + heading.length + nextHeadingMatch.index;
+    const before = content.slice(0, insertIdx).trimEnd();
+    const after = content.slice(insertIdx).trimStart();
+    return `${before}\n${entryLine}\n\n${after}`;
+  } else {
+    const before = content.trimEnd();
+    return `${before}\n${entryLine}\n`;
+  }
+}
+
+/**
+ * Synthesizes clean title and summary for an architecture discussion session.
+ */
+export function synthesizeDiscussionMetadata(
+  text: string | undefined,
+  doc: string,
+  discussedNodes: string[],
+  threads: CommentThread[]
+): { title: string; summary: string } {
+  let title = "";
+  let summary = "";
+  const rawText = typeof text === "string" ? text.trim() : "";
+
+  if (rawText) {
+    const titleMatch = rawText.match(/(?:^|\n)(?:#\s*|Title:\s*)([^\n]+)/i);
+    const summaryMatch = rawText.match(/(?:^|\n)(?:Summary:\s*)([^\n]+)/i);
+
+    if (titleMatch) {
+      title = titleMatch[1].trim();
+    }
+    if (summaryMatch) {
+      summary = summaryMatch[1].trim();
+    }
+
+    if (!title) {
+      const firstLine = rawText.split("\n")[0].trim().replace(/^[-*#>\s]+/, "");
+      if (firstLine.length <= 80 && !firstLine.toLowerCase().startsWith("summary:")) {
+        title = firstLine;
+      } else {
+        const sentenceEnd = firstLine.search(/[.!?]/);
+        if (sentenceEnd > 0 && sentenceEnd <= 80) {
+          title = firstLine.slice(0, sentenceEnd).trim();
+        } else {
+          title = firstLine.slice(0, 60).trim();
+        }
+      }
+    }
+
+    if (!summary) {
+      const lines = rawText
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
+      const remainingLines = lines.filter(
+        (l) =>
+          !l.toLowerCase().startsWith("#") &&
+          !l.toLowerCase().startsWith("title:") &&
+          l !== title
+      );
+      if (remainingLines.length > 0) {
+        summary = remainingLines.join(" ").replace(/^Summary:\s*/i, "").trim();
+      } else {
+        summary = rawText.replace(/^Summary:\s*/i, "").trim();
+      }
+    }
+  }
+
+  if (!title) {
+    const baseDoc = doc.replace(/\.md$/, "");
+    if (discussedNodes.length > 0) {
+      title = `Architecture Review: ${discussedNodes.join(", ")}`;
+    } else {
+      title = `Architecture Discussion: ${baseDoc}`;
+    }
+  }
+
+  if (!summary) {
+    if (discussedNodes.length > 0) {
+      summary = `Reviewed ${discussedNodes.join(", ")} in ${doc} and resolved architectural trade-offs.`;
+    } else if (threads.length > 0) {
+      summary = `Concluded architecture discussion session for ${doc} with ${threads.length} comment thread${threads.length > 1 ? "s" : ""}.`;
+    } else {
+      summary = `Architecture discussion session concluded for ${doc}.`;
+    }
+  }
+
+  return { title, summary };
+}
+
+// ---------------------------------------------------------------------------
 // MCP Tool Definition & Handler
 // ---------------------------------------------------------------------------
 
@@ -1908,31 +2101,403 @@ export async function archViewHandler(
 
   if (action === "end") {
     const projectRoot = ctx.projectRoot;
+    const config = getArchConfig(projectRoot);
+
+    let sourceDir = config.source;
+    if (typeof args.source === "string" && args.source.trim().length > 0) {
+      const rawSource = args.source.trim();
+      const resolvedSource = path.resolve(projectRoot, rawSource);
+      const relSource = path.relative(projectRoot, resolvedSource);
+      if (
+        !relSource.startsWith(".." + path.sep) &&
+        relSource !== ".." &&
+        !path.isAbsolute(relSource)
+      ) {
+        sourceDir = rawSource;
+      }
+    }
+
+    let archDir = path.resolve(projectRoot, sourceDir);
+    if (fs.existsSync(archDir)) {
+      try {
+        const stat = fs.statSync(archDir);
+        if (stat.isFile()) {
+          archDir = path.dirname(archDir);
+        }
+      } catch {}
+    }
+
     let doc =
       typeof args.doc === "string" && args.doc.trim()
         ? args.doc.trim()
         : undefined;
 
     if (!doc) {
-      const config = getArchConfig(projectRoot);
-      const targetPath = path.resolve(projectRoot, config.source);
-      const diagrams = fs.existsSync(targetPath)
-        ? scanArchitectureDir(targetPath)
+      const diagrams = fs.existsSync(archDir)
+        ? scanArchitectureDir(archDir)
         : [];
       doc = diagrams[0]?.filename || "overview.md";
+    }
+
+    if (!doc.endsWith(".md") && !doc.includes(".")) {
+      doc = `${doc}.md`;
     }
 
     const threads = loadComments(projectRoot, doc);
     const openThreads = threads.filter((t) => t.status === "open");
     const resolvedThreads = threads.filter((t) => t.status === "resolved");
 
+    const discussedNodes = Array.from(
+      new Set(
+        threads
+          .map((t) => t.nodeId)
+          .filter((n): n is string => Boolean(n && n.trim().length > 0))
+      )
+    );
+
+    const rawText = typeof args.text === "string" ? args.text.trim() : "";
+    const { title, summary } = synthesizeDiscussionMetadata(
+      rawText,
+      doc,
+      discussedNodes,
+      threads
+    );
+
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    const slug =
+      title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 50) || "discussion";
+
+    const discussionsDir = path.join(archDir, "discussions");
+    if (!fs.existsSync(discussionsDir)) {
+      try {
+        fs.mkdirSync(discussionsDir, { recursive: true });
+      } catch (err) {
+        console.error(`[super-dev] Failed to create discussions directory:`, err);
+      }
+    }
+
+    let archiveFilename = `${dateStr}-${slug}.md`;
+    let archiveFilePath = path.join(discussionsDir, archiveFilename);
+    let counter = 2;
+    while (fs.existsSync(archiveFilePath)) {
+      archiveFilename = `${dateStr}-${slug}-${counter}.md`;
+      archiveFilePath = path.join(discussionsDir, archiveFilename);
+      counter++;
+    }
+
+    let keyDecisions = "";
+    if (rawText && rawText.includes("\n- ")) {
+      keyDecisions = rawText;
+    } else if (rawText && rawText !== summary && rawText !== title) {
+      keyDecisions = `- **Decision**: ${rawText}\n- **Scope**: Applied to components in \`${doc}\`.`;
+    } else if (threads.length > 0) {
+      keyDecisions = threads
+        .map((t) => {
+          const nodePart = t.nodeId ? `Node \`${t.nodeId}\`` : "Canvas Pin";
+          const agentReply = [...t.messages].reverse().find((m) => m.author === "agent");
+          if (agentReply) {
+            return `- **${nodePart}**: ${agentReply.text.split("\n")[0]}`;
+          }
+          const userMsg = t.messages[0];
+          if (userMsg) {
+            return `- **${nodePart}**: Discussed "${userMsg.text.split("\n")[0]}"`;
+          }
+          return `- **${nodePart}**: Reviewed during session.`;
+        })
+        .join("\n");
+    } else {
+      keyDecisions = `- Validated architectural constraints and baseline interactions in \`${doc}\`.\n- No blocking trade-offs or architectural risks identified.`;
+    }
+
+    let transcriptMarkdown = "";
+    if (threads.length === 0) {
+      transcriptMarkdown = "_No comments were recorded during this discussion session._";
+    } else {
+      transcriptMarkdown = threads
+        .map((t, idx) => {
+          const nodeTitle = t.nodeId ? `Node \`${t.nodeId}\`` : "Canvas Pin";
+          let block = `### Thread ${idx + 1}: ${nodeTitle}\n`;
+          if (t.messages.length === 0) {
+            block += "_No messages in this thread._";
+          } else {
+            block += t.messages
+              .map((m) => {
+                const author = m.author === "agent" ? "Agent" : "User";
+                const formatted = m.text
+                  .split("\n")
+                  .map((line, i) => (i === 0 ? line : `  ${line}`))
+                  .join("\n");
+                return `- **${author}**: ${formatted}`;
+              })
+              .join("\n");
+          }
+          return block;
+        })
+        .join("\n\n");
+    }
+
+    const archiveContent =
+      `---\n` +
+      `title: ${JSON.stringify(title)}\n` +
+      `date: ${dateStr}\n` +
+      `doc: ${doc}\n` +
+      `nodes: ${JSON.stringify(discussedNodes)}\n` +
+      `summary: ${JSON.stringify(summary)}\n` +
+      `---\n\n` +
+      `# ${title}\n\n` +
+      `**Date:** ${dateStr} | **Document:** \`${doc}\`\n\n` +
+      `## Executive Summary\n` +
+      `${summary}\n\n` +
+      `## Key Decisions & Trade-offs\n` +
+      `${keyDecisions}\n\n` +
+      `## Discussion Transcript\n` +
+      `${transcriptMarkdown}\n`;
+
+    try {
+      fs.writeFileSync(archiveFilePath, archiveContent, "utf-8");
+    } catch (err) {
+      console.error(`[super-dev] Failed to write discussion archive ${archiveFilePath}:`, err);
+    }
+
+    const targetDocPath = path.join(archDir, doc);
+    const entryLine = `- **[${dateStr}] ${title}**: ${summary} ([Full Discussion](discussions/${archiveFilename}))`;
+
+    if (fs.existsSync(targetDocPath)) {
+      try {
+        const existingContent = fs.readFileSync(targetDocPath, "utf-8");
+        const updatedContent = appendDecisionHistory(existingContent, entryLine);
+        fs.writeFileSync(targetDocPath, updatedContent, "utf-8");
+      } catch (err) {
+        console.error(`[super-dev] Failed to update decision history in ${targetDocPath}:`, err);
+      }
+    } else {
+      try {
+        if (!fs.existsSync(archDir)) {
+          fs.mkdirSync(archDir, { recursive: true });
+        }
+        const baseTitle = doc.replace(/\.md$/, "");
+        const initialContent = `# ${baseTitle}\n\n## Architecture Decision History\n${entryLine}\n`;
+        fs.writeFileSync(targetDocPath, initialContent, "utf-8");
+      } catch (err) {
+        console.error(`[super-dev] Failed to create ${targetDocPath}:`, err);
+      }
+    }
+
+    const relArchivePath = path.relative(projectRoot, archiveFilePath).replace(/\\/g, "/");
+    const nodesText = discussedNodes.length > 0
+      ? discussedNodes.map((n) => `\`${n}\``).join(", ")
+      : "None";
+
     return ok(
-      `## Architecture Discussion Concluded\n\n` +
+      `## Architecture Discussion Concluded & Archived\n\n` +
         `- **Document:** \`${doc}\`\n` +
-        `- **Total Threads:** ${threads.length}\n` +
-        `- **Open Threads:** ${openThreads.length}\n` +
-        `- **Resolved Threads:** ${resolvedThreads.length}\n\n` +
-        `Discussion session for \`${doc}\` has been closed. Ready for Architecture Decision Record (ADR) generation.`
+        `- **Archive:** \`${relArchivePath}\`\n` +
+        `- **Title:** ${title}\n` +
+        `- **Summary:** ${summary}\n` +
+        `- **Nodes Discussed:** ${nodesText}\n` +
+        `- **Total Threads:** ${threads.length} (${resolvedThreads.length} resolved, ${openThreads.length} open)\n\n` +
+        `### Architecture Decision Record (ADR)\n` +
+        `An entry has been recorded in \`${doc}\` under \`## Architecture Decision History\` linking to the archived discussion transcript.`
+    );
+  }
+
+  if (action === "history") {
+    const projectRoot = ctx.projectRoot;
+    const config = getArchConfig(projectRoot);
+
+    let sourceDir = config.source;
+    if (typeof args.source === "string" && args.source.trim().length > 0) {
+      const rawSource = args.source.trim();
+      const resolvedSource = path.resolve(projectRoot, rawSource);
+      const relSource = path.relative(projectRoot, resolvedSource);
+      if (
+        !relSource.startsWith(".." + path.sep) &&
+        relSource !== ".." &&
+        !path.isAbsolute(relSource)
+      ) {
+        sourceDir = rawSource;
+      }
+    }
+
+    let archDir = path.resolve(projectRoot, sourceDir);
+    if (fs.existsSync(archDir)) {
+      try {
+        const stat = fs.statSync(archDir);
+        if (stat.isFile()) {
+          archDir = path.dirname(archDir);
+        }
+      } catch {}
+    }
+
+    let discussionsDir = path.join(archDir, "discussions");
+    if (!fs.existsSync(discussionsDir)) {
+      const fallbackDiscussions = path.join(
+        projectRoot,
+        "docs",
+        "architecture",
+        "discussions"
+      );
+      if (fs.existsSync(fallbackDiscussions)) {
+        discussionsDir = fallbackDiscussions;
+      }
+    }
+
+    const relDiscussionsDir = path
+      .relative(projectRoot, discussionsDir)
+      .replace(/\\/g, "/");
+
+    if (!fs.existsSync(discussionsDir)) {
+      return ok(
+        `## Architecture Discussion History\n\nNo discussion archives found in \`${relDiscussionsDir}\`.`
+      );
+    }
+
+    let files: string[] = [];
+    try {
+      files = fs
+        .readdirSync(discussionsDir)
+        .filter((f) => f.endsWith(".md") && !f.startsWith("."));
+    } catch {
+      return ok(
+        `## Architecture Discussion History\n\nNo discussion archives found in \`${relDiscussionsDir}\`.`
+      );
+    }
+
+    if (files.length === 0) {
+      return ok(
+        `## Architecture Discussion History\n\nNo discussion records found in \`${relDiscussionsDir}\`.`
+      );
+    }
+
+    interface DiscussionEntry {
+      filename: string;
+      relPath: string;
+      title: string;
+      date: string;
+      doc: string;
+      nodes: string[];
+      summary: string;
+      content: string;
+    }
+
+    const entries: DiscussionEntry[] = [];
+    for (const file of files) {
+      const fullPath = path.join(discussionsDir, file);
+      try {
+        const content = fs.readFileSync(fullPath, "utf-8");
+        const { frontmatter } = parseDiscussionFrontmatter(content);
+
+        let date = frontmatter.date;
+        if (!date) {
+          const dateMatch = file.match(/^(\d{4}-\d{2}-\d{2})/);
+          date = dateMatch ? dateMatch[1] : "";
+        }
+
+        let title = frontmatter.title;
+        if (!title) {
+          const headingMatch = content.match(/^#\s+(.+)$/m);
+          title = headingMatch ? headingMatch[1].trim() : file.replace(/\.md$/, "");
+        }
+
+        let doc = frontmatter.doc;
+        if (!doc) {
+          const docMatch = content.match(/\*\*Document:\*\*\s*`?([^`\s\n|]+)`?/i);
+          doc = docMatch ? docMatch[1].trim() : "";
+        }
+
+        let summary = frontmatter.summary;
+        if (!summary) {
+          const summaryMatch = content.match(/## Executive Summary\s*\n+([^\n#]+)/i);
+          summary = summaryMatch ? summaryMatch[1].trim() : "";
+        }
+
+        entries.push({
+          filename: file,
+          relPath: path.relative(projectRoot, fullPath).replace(/\\/g, "/"),
+          title,
+          date,
+          doc,
+          nodes: frontmatter.nodes || [],
+          summary,
+          content,
+        });
+      } catch {}
+    }
+
+    // Sort newest first
+    entries.sort((a, b) => {
+      if (a.date && b.date && a.date !== b.date) {
+        return b.date.localeCompare(a.date);
+      }
+      return b.filename.localeCompare(a.filename);
+    });
+
+    let filtered = entries;
+
+    // Filter by doc if provided
+    if (typeof args.doc === "string" && args.doc.trim().length > 0) {
+      const filterDoc = args.doc.trim().toLowerCase();
+      const filterDocBase = filterDoc.replace(/\.md$/, "");
+      filtered = filtered.filter((e) => {
+        const eDoc = e.doc.toLowerCase();
+        const eDocBase = eDoc.replace(/\.md$/, "");
+        return (
+          eDoc === filterDoc ||
+          eDocBase === filterDocBase ||
+          eDoc.includes(filterDocBase)
+        );
+      });
+    }
+
+    // Filter by query if provided
+    if (typeof args.query === "string" && args.query.trim().length > 0) {
+      const q = args.query.trim().toLowerCase();
+      filtered = filtered.filter((e) => {
+        return (
+          e.title.toLowerCase().includes(q) ||
+          e.summary.toLowerCase().includes(q) ||
+          e.doc.toLowerCase().includes(q) ||
+          e.nodes.some((n) => n.toLowerCase().includes(q)) ||
+          e.content.toLowerCase().includes(q)
+        );
+      });
+    }
+
+    if (filtered.length === 0) {
+      const filters: string[] = [];
+      if (args.doc) filters.push(`document: \`${args.doc}\``);
+      if (args.query) filters.push(`query: "${args.query}"`);
+      const filterStr = filters.length > 0 ? ` matching ${filters.join(" and ")}` : "";
+      return ok(
+        `## Architecture Discussion History\n\nNo architecture discussions found${filterStr}.`
+      );
+    }
+
+    const formattedList = filtered
+      .map((e) => {
+        const nodesText =
+          e.nodes.length > 0
+            ? e.nodes.map((n) => `\`${n}\``).join(", ")
+            : "None";
+        const datePrefix = e.date ? `[${e.date}] ` : "";
+        return (
+          `- **${datePrefix}${e.title}** (\`${e.doc || e.filename}\`)\n` +
+          `  - **File:** \`${e.relPath}\`\n` +
+          `  - **Summary:** ${e.summary || "No summary provided."}\n` +
+          `  - **Nodes Discussed:** ${nodesText}`
+        );
+      })
+      .join("\n\n");
+
+    return ok(
+      `## Architecture Discussion History (${filtered.length} record${
+        filtered.length === 1 ? "" : "s"
+      })\n\n${formattedList}`
     );
   }
 
@@ -2071,11 +2636,11 @@ export async function archViewHandler(
 
 export const archViewSchema = {
   action: z
-    .enum(["view", "listen", "reply", "end"])
+    .enum(["view", "listen", "reply", "end", "history"])
     .optional()
     .default("view")
     .describe(
-      "Action to perform: 'view' (launch viewer), 'listen' (wait for browser comment), 'reply' (post agent response), 'end' (finish session & get ADR summary)."
+      "Action to perform: 'view' (launch viewer), 'listen' (wait for browser comment), 'reply' (post agent response), 'end' (finish session & get ADR summary), 'history' (list past architecture discussions)."
     ),
   doc: z
     .string()
@@ -2098,12 +2663,18 @@ export const archViewSchema = {
   text: z
     .string()
     .optional()
-    .describe("Reply text or feedback content."),
+    .describe("Reply text, feedback content, or ADR synthesis summary."),
   timeout_ms: z
     .number()
     .optional()
     .describe(
       "Long-poll timeout in milliseconds for 'listen' action (default: 60000ms)."
+    ),
+  query: z
+    .string()
+    .optional()
+    .describe(
+      "Case-insensitive search query to filter discussions for 'history' action."
     ),
 };
 

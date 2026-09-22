@@ -101,7 +101,7 @@ All features are enabled by default. Disable what you don't need with the `SUPER
 | `voice` | voice_mode | /toggle-voice-mode |
 | `upstream` | upstream_status + all merge tools | /upstream-merge |
 | `todo` | todo_write, todo_read, todo_clear | — |
-| `arch` | arch_view | — |
+| `arch` | arch_view | /arch |
 
 ## Quick Reference
 
@@ -110,6 +110,7 @@ All features are enabled by default. Disable what you don't need with the `SUPER
 | Command | Purpose |
 |---------|---------|
 | `/agent-collab` | Orchestrate autonomous multi-turn debate/collaboration between sub-agents |
+| `/arch` | Launch architecture viewer and conduct interactive canvas discussion session with live speech bubbles and ADR archiving |
 | `/spec-plan` | Drive a requirements → design → tasks workflow with idea pressure-testing and web research |
 | `/spec-execute` | Orchestrate implementation using sub-agents for each task |
 | `/super-dev-update` | Sync skills, pull latest, and rebuild |
@@ -126,7 +127,7 @@ All features are enabled by default. Disable what you don't need with the `SUPER
 | `spec_approve` | Approve current phase and advance to the next |
 | `spec_task_complete` | Mark a task complete; parent tasks auto-commit |
 | `spec_analyze` | Analyze requirements for quality issues (ambiguity, conflicts, completeness, testability) |
-| `arch_view` | Launch interactive architecture diagram viewer in browser with multi-diagram sidebar, pan/zoom canvas, live reload, and node inspector |
+| `arch_view` | Launch interactive architecture diagram viewer in browser with multi-diagram sidebar, pan/zoom canvas, live reload, node inspector, live canvas discussion, and ADR history |
 | `thread_active` | List open/active sidebar threads across all workspaces with live status |
 | `thread_list` | List recent Zed agent conversation threads (supports `active_only`) |
 | `thread_read` | Read a thread by ID with pagination and search |
@@ -283,6 +284,9 @@ Interactive multi-diagram canvas for exploring, inspecting, and presenting syste
 - **Ephemeral local HTTP server & debounced live watcher**: Spawns an ephemeral Node.js HTTP server bound strictly to `127.0.0.1` and watches markdown files with `fs.watch` debounced at 150ms. Real-time changes push to connected clients via Server-Sent Events (SSE), updating diagrams in real-time while preserving your active zoom and pan coordinates.
 - **Client-side export**: Header controls allow one-click **Export HTML** (a standalone, self-contained portable HTML bundle for offline viewing) and **Export SVG** (vector graphic with embedded styling). Both run entirely in the browser with zero server roundtrips.
 - **Zero-config auto-scaffolding**: If called when no architecture documentation exists, `arch_view` automatically scaffolds `docs/architecture/overview.md` with a clean starter Mermaid template and links it under `## Project Reference Docs` in `AGENTS.md`.
+- **Live canvas discussion & speech bubbles (`/arch`)**: Run the `/arch` slash command to launch the viewer and enter an interactive review loop. Press <kbd>C</kbd> (or click the Comment button) to enter Comment Mode and drop comment pins directly on any node or canvas area. Comments broadcast instantly via REST and SSE, sending rich architectural context (node ID, label, upstream/downstream connections, section constraints, and conversation history) to the agent.
+- **Discussion archiving & Architecture Decision Records (ADRs)**: Conclude discussions by clicking **End Discussion** in the viewer or calling `arch_view({ action: "end", text: "..." })`. The full transcript is archived to `docs/architecture/discussions/YYYY-MM-DD-<slug>.md` with structured YAML frontmatter, executive summary, key trade-offs, and threaded conversation transcript. Super Dev automatically appends or updates an entry linking to the discussion under `## Architecture Decision History` in the active document.
+- **Discussion history & search (`action: "history"`)**: Query past architectural decisions and discussion transcripts with `arch_view({ action: "history", doc: "overview.md", query: "keyword" })`. Filters by document and searches across titles, summaries, discussed nodes, and discussion content.
 
 #### Configuration Schema (`.zed/super-dev/config.json`)
 

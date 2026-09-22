@@ -174,6 +174,21 @@ export type ArchDiscussEvent =
   | { type: "thread_resolved"; commentId: string }
   | { type: "session_ended"; summary: string };
 
+export interface ArchitectureDiscussionFrontmatter {
+  title: string;
+  date: string;
+  doc: string;
+  nodes: string[];
+  summary: string;
+}
+
+export interface ArchitectureDiscussionRecord {
+  filename: string;
+  filePath: string;
+  frontmatter: ArchitectureDiscussionFrontmatter;
+  content: string;
+}
+
 // ---------------------------------------------------------------------------
 // Upstream merge state (.upstream/merge-state.json)
 // ---------------------------------------------------------------------------
