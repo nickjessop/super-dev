@@ -79,6 +79,20 @@ export interface UpstreamConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Super Dev unified config (.super-dev/config.json)
+// ---------------------------------------------------------------------------
+
+export interface SuperDevArchConfig {
+  source: string;      // default: "docs/architecture"
+  reference: string;   // default: "AGENTS.md"
+}
+
+export interface SuperDevConfig {
+  architecture?: Partial<SuperDevArchConfig>;
+  upstream?: UpstreamConfig;
+}
+
+// ---------------------------------------------------------------------------
 // Upstream merge state (.upstream/merge-state.json)
 // ---------------------------------------------------------------------------
 

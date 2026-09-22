@@ -19,27 +19,42 @@ import {
   ok,
   err,
 } from "../types.js";
+import {
+  getSuperDevDir,
+  loadSuperDevConfig,
+  updateSuperDevConfig,
+  ensureGitignored,
+  SUPER_DEV_DIR,
+  SUPER_DEV_CONFIG_FILE,
+} from "./settings.js";
 
-// --- Upstream directory and file paths ---
+// --- Super Dev directory and file paths ---
+const SUPER_DEV_MERGE_STATE_FILE = "upstream-merge-state.json";
+
+// --- Upstream directory and file paths (legacy) ---
 const UPSTREAM_DIR = ".upstream";
-const CONFIG_FILE = "config.json";
-const MERGE_STATE_FILE = "merge-state.json";
+const UPSTREAM_CONFIG_FILE = "config.json";
+const UPSTREAM_MERGE_STATE_FILE = "merge-state.json";
 const GITIGNORE_FILE = ".gitignore";
 
-// --- Legacy paths (for backward compatibility) ---
+// --- Legacy root paths (for backward compatibility) ---
 const LEGACY_CONFIG_FILE = ".upstream.json";
 const LEGACY_MERGE_STATE_FILE = ".upstream-merge-state.json";
+
+function getSuperDevMergeStatePath(projectRoot: string): string {
+  return join(getSuperDevDir(projectRoot), SUPER_DEV_MERGE_STATE_FILE);
+}
 
 function getUpstreamDir(projectRoot: string): string {
   return join(projectRoot, UPSTREAM_DIR);
 }
 
-function getConfigPath(projectRoot: string): string {
-  return join(getUpstreamDir(projectRoot), CONFIG_FILE);
+function getLegacyConfigPath(projectRoot: string): string {
+  return join(getUpstreamDir(projectRoot), UPSTREAM_CONFIG_FILE);
 }
 
-function getMergeStatePath(projectRoot: string): string {
-  return join(getUpstreamDir(projectRoot), MERGE_STATE_FILE);
+function getLegacyMergeStatePath(projectRoot: string): string {
+  return join(getUpstreamDir(projectRoot), UPSTREAM_MERGE_STATE_FILE);
 }
 
 function ensureUpstreamDir(projectRoot: string): void {
@@ -52,83 +67,199 @@ function ensureUpstreamDir(projectRoot: string): void {
 function createUpstreamGitignore(projectRoot: string): void {
   const gitignorePath = join(getUpstreamDir(projectRoot), GITIGNORE_FILE);
   if (!existsSync(gitignorePath)) {
-    writeFileSync(gitignorePath, `${MERGE_STATE_FILE}\n`);
+    writeFileSync(gitignorePath, `${UPSTREAM_MERGE_STATE_FILE}\n`);
   }
 }
 
 function migrateFromLegacy(projectRoot: string): void {
-  // Migrate .upstream.json to .upstream/config.json
+  // Migrate root .upstream.json if present
   const legacyConfig = join(projectRoot, LEGACY_CONFIG_FILE);
   if (existsSync(legacyConfig)) {
-    ensureUpstreamDir(projectRoot);
-    const config = JSON.parse(readFileSync(legacyConfig, "utf-8"));
-    writeFileSync(getConfigPath(projectRoot), JSON.stringify(config, null, 2) + "\n");
-    unlinkSync(legacyConfig);
-    console.error(`[upstream] Migrated ${LEGACY_CONFIG_FILE} to ${UPSTREAM_DIR}/${CONFIG_FILE}`);
+    try {
+      const config = JSON.parse(readFileSync(legacyConfig, "utf-8"));
+      const current = loadSuperDevConfig(projectRoot);
+      if (!current.upstream) {
+        updateSuperDevConfig(projectRoot, { upstream: config });
+      }
+      unlinkSync(legacyConfig);
+      console.error(
+        `[upstream] Migrated ${LEGACY_CONFIG_FILE} to ${SUPER_DEV_DIR}/${SUPER_DEV_CONFIG_FILE}`,
+      );
+    } catch (err) {
+      console.warn(`[upstream] Failed to migrate ${LEGACY_CONFIG_FILE}:`, err);
+    }
   }
 
-  // Migrate .upstream-merge-state.json to .upstream/merge-state.json
+  // Migrate root .upstream-merge-state.json if present
   const legacyState = join(projectRoot, LEGACY_MERGE_STATE_FILE);
   if (existsSync(legacyState)) {
-    ensureUpstreamDir(projectRoot);
-    const state = JSON.parse(readFileSync(legacyState, "utf-8"));
-    writeFileSync(getMergeStatePath(projectRoot), JSON.stringify(state, null, 2) + "\n");
-    unlinkSync(legacyState);
-    console.error(`[upstream] Migrated ${LEGACY_MERGE_STATE_FILE} to ${UPSTREAM_DIR}/${MERGE_STATE_FILE}`);
+    try {
+      const state = JSON.parse(readFileSync(legacyState, "utf-8"));
+      const targetPath = existsSync(getUpstreamDir(projectRoot))
+        ? getLegacyMergeStatePath(projectRoot)
+        : getSuperDevMergeStatePath(projectRoot);
+      const targetDir = dirname(targetPath);
+      if (!existsSync(targetDir)) {
+        mkdirSync(targetDir, { recursive: true });
+      }
+      writeFileSync(targetPath, JSON.stringify(state, null, 2) + "\n");
+      unlinkSync(legacyState);
+      console.error(`[upstream] Migrated ${LEGACY_MERGE_STATE_FILE} to ${targetPath}`);
+    } catch (err) {
+      console.warn(`[upstream] Failed to migrate ${LEGACY_MERGE_STATE_FILE}:`, err);
+    }
   }
 }
 
 function loadConfig(projectRoot: string): UpstreamConfig | null {
-  // Try new location first
-  const configPath = getConfigPath(projectRoot);
-  if (existsSync(configPath)) {
-    return JSON.parse(readFileSync(configPath, "utf-8")) as UpstreamConfig;
+  // 1. Check .super-dev/config.json first (upstream key)
+  const superDevConfig = loadSuperDevConfig(projectRoot);
+  if (superDevConfig.upstream && typeof superDevConfig.upstream === "object") {
+    return superDevConfig.upstream;
   }
 
-  // Check for legacy location and migrate
-  const legacyConfig = join(projectRoot, LEGACY_CONFIG_FILE);
-  if (existsSync(legacyConfig)) {
+  // 2. Fall back to .upstream/config.json
+  const legacyConfigPath = getLegacyConfigPath(projectRoot);
+  if (existsSync(legacyConfigPath)) {
+    try {
+      return JSON.parse(readFileSync(legacyConfigPath, "utf-8")) as UpstreamConfig;
+    } catch (err) {
+      console.warn(`[upstream] Failed to parse config at ${legacyConfigPath}:`, err);
+    }
+  }
+
+  // 3. Fall back to root legacy .upstream.json
+  const oldLegacyConfig = join(projectRoot, LEGACY_CONFIG_FILE);
+  if (existsSync(oldLegacyConfig)) {
     migrateFromLegacy(projectRoot);
-    return JSON.parse(readFileSync(configPath, "utf-8")) as UpstreamConfig;
+    const superDevConfigAfterMigration = loadSuperDevConfig(projectRoot);
+    if (superDevConfigAfterMigration.upstream) {
+      return superDevConfigAfterMigration.upstream;
+    }
+    if (existsSync(legacyConfigPath)) {
+      try {
+        return JSON.parse(readFileSync(legacyConfigPath, "utf-8")) as UpstreamConfig;
+      } catch {
+        // Ignore
+      }
+    }
   }
 
   return null;
 }
 
 function saveConfig(projectRoot: string, config: UpstreamConfig): void {
-  ensureUpstreamDir(projectRoot);
-  createUpstreamGitignore(projectRoot);
-  writeFileSync(getConfigPath(projectRoot), JSON.stringify(config, null, 2) + "\n");
+  // Always save into .super-dev/config.json under the `upstream` property
+  updateSuperDevConfig(projectRoot, { upstream: config });
+  ensureGitignored(projectRoot);
+
+  // If the legacy .upstream directory exists, also keep .upstream/config.json in sync
+  const legacyDir = getUpstreamDir(projectRoot);
+  if (existsSync(legacyDir)) {
+    createUpstreamGitignore(projectRoot);
+    writeFileSync(
+      getLegacyConfigPath(projectRoot),
+      JSON.stringify(config, null, 2) + "\n",
+    );
+  }
+}
+
+function getTargetMergeStatePath(projectRoot: string): string {
+  // If .super-dev/upstream-merge-state.json already exists, continue using it
+  const superDevPath = getSuperDevMergeStatePath(projectRoot);
+  if (existsSync(superDevPath)) {
+    return superDevPath;
+  }
+
+  // Fall back to .upstream/merge-state.json if legacy .upstream/ directory exists
+  const legacyDir = getUpstreamDir(projectRoot);
+  if (existsSync(legacyDir)) {
+    return getLegacyMergeStatePath(projectRoot);
+  }
+
+  // Default to .super-dev/upstream-merge-state.json
+  return superDevPath;
 }
 
 function loadMergeState(projectRoot: string): MergeState | null {
-  // Try new location first
-  const statePath = getMergeStatePath(projectRoot);
-  if (existsSync(statePath)) {
-    return JSON.parse(readFileSync(statePath, "utf-8")) as MergeState;
+  // 1. Check .super-dev/upstream-merge-state.json first
+  const superDevPath = getSuperDevMergeStatePath(projectRoot);
+  if (existsSync(superDevPath)) {
+    try {
+      return JSON.parse(readFileSync(superDevPath, "utf-8")) as MergeState;
+    } catch (err) {
+      console.warn(`[upstream] Failed to parse merge state at ${superDevPath}:`, err);
+    }
   }
 
-  // Check for legacy location and migrate
-  const legacyState = join(projectRoot, LEGACY_MERGE_STATE_FILE);
-  if (existsSync(legacyState)) {
+  // 2. Fall back to .upstream/merge-state.json
+  const legacyPath = getLegacyMergeStatePath(projectRoot);
+  if (existsSync(legacyPath)) {
+    try {
+      return JSON.parse(readFileSync(legacyPath, "utf-8")) as MergeState;
+    } catch (err) {
+      console.warn(`[upstream] Failed to parse merge state at ${legacyPath}:`, err);
+    }
+  }
+
+  // 3. Check for root legacy .upstream-merge-state.json and migrate
+  const oldLegacyState = join(projectRoot, LEGACY_MERGE_STATE_FILE);
+  if (existsSync(oldLegacyState)) {
     migrateFromLegacy(projectRoot);
-    return JSON.parse(readFileSync(statePath, "utf-8")) as MergeState;
+    if (existsSync(superDevPath)) {
+      try {
+        return JSON.parse(readFileSync(superDevPath, "utf-8")) as MergeState;
+      } catch {
+        // Ignore
+      }
+    }
+    if (existsSync(legacyPath)) {
+      try {
+        return JSON.parse(readFileSync(legacyPath, "utf-8")) as MergeState;
+      } catch {
+        // Ignore
+      }
+    }
   }
 
   return null;
 }
 
 function saveMergeState(projectRoot: string, state: MergeState): void {
-  ensureUpstreamDir(projectRoot);
-  writeFileSync(getMergeStatePath(projectRoot), JSON.stringify(state, null, 2) + "\n");
+  const targetPath = getTargetMergeStatePath(projectRoot);
+  const targetDir = dirname(targetPath);
+  if (!existsSync(targetDir)) {
+    mkdirSync(targetDir, { recursive: true });
+  }
+
+  if (targetPath === getSuperDevMergeStatePath(projectRoot)) {
+    ensureGitignored(projectRoot);
+  } else if (existsSync(getUpstreamDir(projectRoot))) {
+    createUpstreamGitignore(projectRoot);
+  }
+
+  writeFileSync(targetPath, JSON.stringify(state, null, 2) + "\n");
 }
 
 function removeMergeState(projectRoot: string): void {
-  const statePath = getMergeStatePath(projectRoot);
-  if (existsSync(statePath)) {
-    unlinkSync(statePath);
+  const paths = [
+    getSuperDevMergeStatePath(projectRoot),
+    getLegacyMergeStatePath(projectRoot),
+    join(projectRoot, LEGACY_MERGE_STATE_FILE),
+  ];
+
+  for (const p of paths) {
+    if (existsSync(p)) {
+      try {
+        unlinkSync(p);
+      } catch (err) {
+        console.warn(`[upstream] Failed to remove merge state at ${p}:`, err);
+      }
+    }
   }
 }
+
+const clearMergeState = removeMergeState;
 
 function matchesGlob(filePath: string, pattern: string): boolean {
   let regexStr = "^";
@@ -459,12 +590,16 @@ async function upstreamStatus(
 
       saveConfig(projectRoot, config);
 
+      const configLocation = existsSync(getUpstreamDir(projectRoot))
+        ? `.super-dev/config.json (and synced to .upstream/config.json)`
+        : `.super-dev/config.json`;
+
       return ok(
         `Upstream configured successfully!\n\n` +
           `Remote: ${remote} → ${remote_url}${remoteExists ? " (already existed)" : ""}\n` +
           `Branch: ${branch}\n` +
-          `Config written to: .upstream/config.json\n\n` +
-          `✅ .upstream/.gitignore created (merge-state.json will be ignored)\n\n` +
+          `Config written to: ${configLocation}\n\n` +
+          `✅ Configuration stored and gitignored\n\n` +
           `Next step: Run upstream_status (without remote_url) to fetch and check upstream status.`,
       );
     } catch (e: unknown) {
@@ -1334,3 +1469,14 @@ export const upstreamTools: ToolDef[] = [
     handler: upstreamAbort,
   },
 ];
+
+export {
+  loadConfig,
+  saveConfig,
+  loadMergeState,
+  saveMergeState,
+  removeMergeState,
+  clearMergeState,
+  getSuperDevMergeStatePath,
+  getLegacyMergeStatePath,
+};
