@@ -1,0 +1,1440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Architecture Viewer — Super Dev</title>
+  
+  <!-- CDN Dependencies -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@11/marked.min.js"></script>
+
+  <style>
+    :root {
+      --bg-canvas: #0f1117;
+      --bg-surface: #161b22;
+      --bg-subtle: #21262d;
+      --bg-hover: #30363d;
+      --border-color: #30363d;
+      --border-subtle: #21262d;
+      --text-main: #c9d1d9;
+      --text-bright: #f0f6fc;
+      --text-muted: #8b949e;
+      --accent-blue: #388bfd;
+      --accent-blue-bg: rgba(56, 139, 253, 0.15);
+      --accent-green: #3fb950;
+      --accent-green-bg: rgba(63, 185, 80, 0.15);
+      --accent-red: #f85149;
+      --accent-red-bg: rgba(248, 81, 73, 0.15);
+      --accent-amber: #d29922;
+      --accent-amber-bg: rgba(210, 153, 34, 0.15);
+      --header-height: 48px;
+      --sidebar-width: 260px;
+      --inspector-width: 400px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--bg-canvas);
+      color: var(--text-main);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--bg-hover);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-muted);
+    }
+
+    /* Top Header Bar */
+    #header {
+      height: var(--header-height);
+      background-color: var(--bg-surface);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      user-select: none;
+      z-index: 100;
+      position: relative;
+    }
+
+    .header-left, .header-center, .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .icon-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-main);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      transition: all 0.15s ease;
+    }
+    .icon-btn:hover {
+      background: var(--bg-subtle);
+      border-color: var(--border-color);
+      color: var(--text-bright);
+    }
+    .icon-btn svg {
+      width: 16px;
+      height: 16px;
+      fill: currentColor;
+    }
+
+    .app-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text-bright);
+    }
+    .app-title svg {
+      width: 18px;
+      height: 18px;
+      fill: var(--accent-blue);
+    }
+
+    .divider {
+      width: 1px;
+      height: 18px;
+      background: var(--border-color);
+    }
+
+    .doc-badge {
+      font-size: 12px;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      color: var(--accent-blue);
+      background: var(--accent-blue-bg);
+      border: 1px solid rgba(56, 139, 253, 0.3);
+      padding: 3px 8px;
+      border-radius: 6px;
+      max-width: 220px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .live-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-muted);
+      padding: 3px 8px;
+      border-radius: 12px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+    }
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      transition: background 0.2s ease, box-shadow 0.2s ease;
+    }
+    .live-dot.connected {
+      background: var(--accent-green);
+      box-shadow: 0 0 8px rgba(63, 185, 80, 0.6);
+    }
+    .live-dot.disconnected {
+      background: var(--accent-red);
+    }
+
+    .btn-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-bright);
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      user-select: none;
+    }
+    .btn-action:hover {
+      background: var(--bg-hover);
+      border-color: var(--text-muted);
+    }
+    .btn-action svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+
+    /* Main Container (3-Pane) */
+    #app {
+      display: flex;
+      height: calc(100vh - var(--header-height));
+      width: 100vw;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Left Sidebar */
+    #sidebar {
+      width: var(--sidebar-width);
+      min-width: var(--sidebar-width);
+      max-width: var(--sidebar-width);
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+                  min-width 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+                  max-width 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+                  opacity 0.2s ease;
+      z-index: 40;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    #sidebar.collapsed {
+      width: 0;
+      min-width: 0;
+      max-width: 0;
+      border-right: none;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .sidebar-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .sidebar-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+    }
+    .sidebar-count {
+      font-size: 11px;
+      background: var(--bg-subtle);
+      color: var(--text-muted);
+      border: 1px solid var(--border-subtle);
+      padding: 1px 6px;
+      border-radius: 10px;
+    }
+
+    .diagram-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .diagram-item {
+      padding: 8px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .diagram-item:hover {
+      background: var(--bg-subtle);
+    }
+    .diagram-item.active {
+      background: var(--accent-blue-bg);
+      border-color: rgba(56, 139, 253, 0.4);
+    }
+    .diagram-item .item-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-bright);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .diagram-item.active .item-title {
+      color: #79c0ff;
+    }
+    .diagram-item .item-filename {
+      font-size: 11px;
+      font-family: ui-monospace, monospace;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Center Viewport & Canvas */
+    #viewport {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background-color: var(--bg-canvas);
+      background-image: radial-gradient(#30363d 1px, transparent 1px);
+      background-size: 20px 20px;
+      cursor: default;
+      user-select: none;
+    }
+
+    body.space-pressed #viewport {
+      cursor: grab !important;
+    }
+    body.is-dragging #viewport {
+      cursor: grabbing !important;
+    }
+
+    #canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform-origin: 0 0;
+      will-change: transform;
+      pointer-events: auto;
+    }
+
+    #canvas svg {
+      overflow: visible;
+      display: block;
+    }
+
+    /* Mermaid Node Active Highlight */
+    .node-selected rect,
+    .node-selected circle,
+    .node-selected polygon,
+    .node-selected path {
+      stroke: #3b82f6 !important;
+      stroke-width: 3px !important;
+      filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.7)) !important;
+    }
+
+    .node {
+      cursor: pointer;
+    }
+
+    /* Floating Canvas Controls */
+    #canvas-controls {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(22, 27, 34, 0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 4px;
+      z-index: 30;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+
+    .ctrl-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-main);
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.15s ease;
+    }
+    .ctrl-btn:hover {
+      background: var(--bg-subtle);
+      color: var(--text-bright);
+    }
+    .ctrl-btn svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+
+    .zoom-level {
+      font-size: 11px;
+      font-family: ui-monospace, monospace;
+      color: var(--text-muted);
+      padding: 0 6px;
+      min-width: 44px;
+      text-align: center;
+      cursor: pointer;
+    }
+    .zoom-level:hover {
+      color: var(--text-bright);
+    }
+
+    .canvas-hint {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      font-size: 11px;
+      color: var(--text-muted);
+      background: rgba(22, 27, 34, 0.7);
+      backdrop-filter: blur(4px);
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border-subtle);
+      pointer-events: none;
+      user-select: none;
+      transition: opacity 0.3s ease;
+    }
+
+    /* Right Inspector Drawer */
+    #inspector {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: var(--inspector-width);
+      max-width: 90vw;
+      background: var(--bg-surface);
+      border-left: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      transform: translateX(100%);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 50;
+      box-shadow: -8px 0 24px rgba(0, 0, 0, 0.4);
+    }
+
+    #inspector.open {
+      transform: translateX(0);
+    }
+
+    .inspector-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .inspector-header-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .inspector-badges {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .node-id-badge {
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      background: var(--bg-subtle);
+      color: var(--text-bright);
+      border: 1px solid var(--border-color);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .status-badge {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 2px 6px;
+      border-radius: 10px;
+    }
+    .status-badge.new {
+      background: var(--accent-green-bg);
+      color: var(--accent-green);
+      border: 1px solid rgba(63, 185, 80, 0.3);
+    }
+    .status-badge.existing {
+      background: var(--accent-blue-bg);
+      color: #79c0ff;
+      border: 1px solid rgba(56, 139, 253, 0.3);
+    }
+    .status-badge.deprecated {
+      background: var(--accent-red-bg);
+      color: var(--accent-red);
+      border: 1px solid rgba(248, 81, 73, 0.3);
+    }
+    .status-badge.neutral {
+      background: var(--bg-subtle);
+      color: var(--text-muted);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .inspector-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-bright);
+      line-height: 1.3;
+      word-break: break-word;
+    }
+
+    .inspector-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--text-main);
+    }
+
+    /* Markdown Typography in Inspector */
+    .inspector-body h1,
+    .inspector-body h2,
+    .inspector-body h3,
+    .inspector-body h4 {
+      color: var(--text-bright);
+      margin-top: 16px;
+      margin-bottom: 8px;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+    .inspector-body h1 { font-size: 16px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 4px; }
+    .inspector-body h2 { font-size: 14px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 4px; }
+    .inspector-body h3 { font-size: 13px; }
+    .inspector-body p {
+      margin-bottom: 12px;
+    }
+    .inspector-body ul, .inspector-body ol {
+      padding-left: 20px;
+      margin-bottom: 12px;
+    }
+    .inspector-body li {
+      margin-bottom: 4px;
+    }
+    .inspector-body code {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+      background: var(--bg-subtle);
+      padding: 2px 4px;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+    }
+    .inspector-body pre {
+      background: #0d1117;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 10px;
+      overflow-x: auto;
+      margin-bottom: 12px;
+    }
+    .inspector-body pre code {
+      background: transparent;
+      padding: 0;
+      border: none;
+    }
+    .inspector-body blockquote {
+      border-left: 3px solid var(--accent-blue);
+      padding-left: 10px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+    .inspector-body table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 12px;
+      font-size: 12px;
+    }
+    .inspector-body th, .inspector-body td {
+      border: 1px solid var(--border-color);
+      padding: 6px 8px;
+      text-align: left;
+    }
+    .inspector-body th {
+      background: var(--bg-subtle);
+      font-weight: 600;
+    }
+
+    .muted-note {
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    /* States & Overlays */
+    .empty-state, .error-state {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      max-width: 480px;
+      padding: 24px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+    .empty-state h3, .error-state h3 {
+      font-size: 16px;
+      color: var(--text-bright);
+      margin-bottom: 8px;
+    }
+    .empty-state p, .error-state p {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    .error-state pre {
+      margin-top: 12px;
+      padding: 10px;
+      background: #0d1117;
+      border: 1px solid var(--accent-red);
+      border-radius: 6px;
+      font-size: 11px;
+      color: var(--accent-red);
+      text-align: left;
+      overflow-x: auto;
+      max-height: 180px;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      :root {
+        --sidebar-width: 200px;
+        --inspector-width: 320px;
+      }
+      .canvas-hint {
+        display: none;
+      }
+      .app-title span {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Header Bar -->
+  <header id="header">
+    <div class="header-left">
+      <button id="sidebar-toggle" class="icon-btn" title="Toggle Sidebar (Ctrl+B)">
+        <svg viewBox="0 0 16 16"><path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 13.25 15H2.75A1.75 1.75 0 0 1 1 13.25Zm4.5 10.75V2.5h-2.75a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25Zm1.5 0h6.25a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25H7Z"></path></svg>
+      </button>
+      <div class="app-title">
+        <svg viewBox="0 0 16 16"><path d="M1.75 1.5a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25ZM0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75 1.75 0 0 1 0 14.25Zm9.22 3.72a.75.75 0 0 1 1.06 0L12 7.19l1.72-1.72a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042L13.06 8.25l1.72 1.72a.75.75 0 0 1-.018 1.042.75.75 0 0 1-1.042.018L12 9.31l-1.72 1.72a.75.75 0 0 1-1.06-1.06l1.72-1.72-1.72-1.72a.75.75 0 0 1 0-1.06ZM3.75 4.5h3.5a.75.75 0 0 1 0 1.5h-3.5a.75.75 0 0 1 0-1.5ZM3 8a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 0 1.5h-3.5A.75.75 0 0 1 3 8Zm.75 2.5a.75.75 0 0 0 0 1.5h3.5a.75.75 0 0 0 0-1.5Z"></path></svg>
+        <span>Super Dev Architecture</span>
+      </div>
+      <div class="divider"></div>
+      <span id="active-doc-badge" class="doc-badge">overview.md</span>
+    </div>
+
+    <div class="header-center">
+      <div class="live-status" title="Server-Sent Events Connection">
+        <div id="live-dot" class="live-dot"></div>
+        <span id="live-text">Connecting</span>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <button id="btn-export-svg" class="btn-action" title="Export rendered SVG vector">
+        <svg viewBox="0 0 16 16"><path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"></path><path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.969a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.78a.749.749 0 1 1 1.06-1.06l1.97 1.969Z"></path></svg>
+        Export SVG
+      </button>
+      <button id="btn-export-html" class="btn-action" title="Export standalone self-contained HTML file">
+        <svg viewBox="0 0 16 16"><path d="M4.72 3.22a.75.75 0 0 1 1.06 1.06L2.06 8l3.72 3.72a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L.47 8.53a.75.75 0 0 1 0-1.06l4.25-4.25Zm6.56 0a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.275-.326.749.749 0 0 1 .215-.734L13.94 8l-3.72-3.72a.75.75 0 0 1 0-1.06Zm-4.996 9.88 2.5-10a.75.75 0 0 1 1.452.36l-2.5 10a.75.75 0 0 1-1.452-.36Z"></path></svg>
+        Export HTML
+      </button>
+    </div>
+  </header>
+
+  <!-- 3-Pane Layout -->
+  <main id="app">
+    <!-- Left Sidebar -->
+    <aside id="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-title">Diagrams</span>
+        <span id="diagram-count" class="sidebar-count">0</span>
+      </div>
+      <ul id="diagram-list" class="diagram-list">
+        <!-- Rendered dynamically -->
+      </ul>
+    </aside>
+
+    <!-- Center Canvas Viewport -->
+    <section id="viewport">
+      <div id="canvas"></div>
+
+      <!-- Floating Controls -->
+      <div id="canvas-controls">
+        <button id="btn-zoom-in" class="ctrl-btn" title="Zoom In (+)">
+          <svg viewBox="0 0 16 16"><path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z"></path></svg>
+        </button>
+        <button id="btn-zoom-out" class="ctrl-btn" title="Zoom Out (-)">
+          <svg viewBox="0 0 16 16"><path d="M2 7.75A.75.75 0 0 1 2.75 7h10.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 7.75Z"></path></svg>
+        </button>
+        <div id="btn-zoom-reset" class="zoom-level" title="Reset to 100%">100%</div>
+        <button id="btn-fit-view" class="ctrl-btn" title="Fit to View">
+          <svg viewBox="0 0 16 16"><path d="M1.75 2.5h2.5a.75.75 0 0 0 0-1.5h-2.5A1.75 1.75 0 0 0 0 2.75v2.5a.75.75 0 0 0 1.5 0v-2.5c0-.138.112-.25.25-.25ZM11.75 1a.75.75 0 0 0 0 1.5h2.5c.138 0 .25.112.25.25v2.5a.75.75 0 0 0 1.5 0v-2.5A1.75 1.75 0 0 0 14.25 1h-2.5ZM1.5 11.75a.75.75 0 0 0-1.5 0v2.5A1.75 1.75 0 0 0 1.75 16h2.5a.75.75 0 0 0 0-1.5h-2.5a.25.25 0 0 1-.25-.25v-2.5ZM16 11.75a.75.75 0 0 0-1.5 0v2.5a.25.25 0 0 1-.25.25h-2.5a.75.75 0 0 0 0 1.5h2.5A1.75 1.75 0 0 0 16 14.25v-2.5Z"></path></svg>
+        </button>
+      </div>
+
+      <div class="canvas-hint">
+        Space + Drag to Pan • Wheel to Zoom • Click node to inspect
+      </div>
+
+      <!-- Empty state if no diagrams -->
+      <div id="empty-state" class="empty-state" style="display: none;">
+        <h3>No Architecture Diagrams Found</h3>
+        <p>Create markdown files in <code>docs/architecture/</code> containing <code>```mermaid</code> blocks to view them here.</p>
+      </div>
+    </section>
+
+    <!-- Right Node Inspector Drawer -->
+    <aside id="inspector">
+      <div class="inspector-header">
+        <div class="inspector-header-top">
+          <div class="inspector-badges">
+            <span id="inspector-node-id" class="node-id-badge">NODE_ID</span>
+            <span id="inspector-status" class="status-badge neutral">STATUS</span>
+          </div>
+          <button id="inspector-close" class="icon-btn" title="Close Drawer (Esc)">
+            <svg viewBox="0 0 16 16"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"></path></svg>
+          </button>
+        </div>
+        <h2 id="inspector-title" class="inspector-title">Node Title</h2>
+      </div>
+      <div id="inspector-body" class="inspector-body">
+        <!-- Rendered markdown content -->
+      </div>
+    </aside>
+  </main>
+
+  <!-- Embedded Data Injection Point -->
+  <script id="arch-data" type="application/json">
+  {
+    "activeId": "",
+    "diagrams": []
+  }
+  </script>
+
+  <!-- Viewer Application Script -->
+  <script>
+    (function() {
+      'use strict';
+
+      // ─── Initialize Libraries ──────────────────────────────────
+      if (window.mermaid) {
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: 'dark',
+          securityLevel: 'loose',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+        });
+      }
+
+      // ─── Application State ─────────────────────────────────────
+      const state = {
+        diagrams: [],
+        activeId: null,
+        panX: 0,
+        panY: 0,
+        zoom: 1.0,
+        isSpacePressed: false,
+        isDragging: false,
+        dragStartX: 0,
+        dragStartY: 0,
+        lastMouseX: 0,
+        lastMouseY: 0,
+        dragDistance: 0,
+        sidebarCollapsed: false,
+        selectedNodeEl: null
+      };
+
+      // ─── DOM Element References ────────────────────────────────
+      const viewport = document.getElementById('viewport');
+      const canvas = document.getElementById('canvas');
+      const sidebar = document.getElementById('sidebar');
+      const sidebarToggle = document.getElementById('sidebar-toggle');
+      const diagramList = document.getElementById('diagram-list');
+      const diagramCount = document.getElementById('diagram-count');
+      const activeDocBadge = document.getElementById('active-doc-badge');
+      const emptyState = document.getElementById('empty-state');
+      
+      const inspector = document.getElementById('inspector');
+      const inspectorClose = document.getElementById('inspector-close');
+      const inspectorTitle = document.getElementById('inspector-title');
+      const inspectorNodeId = document.getElementById('inspector-node-id');
+      const inspectorStatus = document.getElementById('inspector-status');
+      const inspectorBody = document.getElementById('inspector-body');
+
+      const btnZoomIn = document.getElementById('btn-zoom-in');
+      const btnZoomOut = document.getElementById('btn-zoom-out');
+      const btnZoomReset = document.getElementById('btn-zoom-reset');
+      const btnFitView = document.getElementById('btn-fit-view');
+
+      const btnExportSvg = document.getElementById('btn-export-svg');
+      const btnExportHtml = document.getElementById('btn-export-html');
+
+      const liveDot = document.getElementById('live-dot');
+      const liveText = document.getElementById('live-text');
+
+      // ─── Pan & Zoom Canvas Engine ──────────────────────────────
+      function updateTransform() {
+        canvas.style.transform = `translate3d(${state.panX}px, ${state.panY}px, 0) scale(${state.zoom})`;
+        btnZoomReset.textContent = `${Math.round(state.zoom * 100)}%`;
+      }
+
+      function zoomAt(factor, clientX, clientY) {
+        const rect = viewport.getBoundingClientRect();
+        const mouseX = (clientX !== undefined ? clientX : rect.left + rect.width / 2) - rect.left;
+        const mouseY = (clientY !== undefined ? clientY : rect.top + rect.height / 2) - rect.top;
+
+        const minZoom = 0.05;
+        const maxZoom = 5.0;
+        const newZoom = Math.min(Math.max(state.zoom * factor, minZoom), maxZoom);
+
+        state.panX = mouseX - (mouseX - state.panX) * (newZoom / state.zoom);
+        state.panY = mouseY - (mouseY - state.panY) * (newZoom / state.zoom);
+        state.zoom = newZoom;
+        updateTransform();
+      }
+
+      function fitToView() {
+        const svg = canvas.querySelector('svg');
+        if (!svg) return;
+
+        let svgWidth = 0;
+        let svgHeight = 0;
+
+        try {
+          const bbox = svg.getBBox();
+          if (bbox && bbox.width > 0 && bbox.height > 0) {
+            svgWidth = bbox.width;
+            svgHeight = bbox.height;
+          }
+        } catch (e) {}
+
+        if (!svgWidth || !svgHeight) {
+          const wAttr = parseFloat(svg.getAttribute('width'));
+          const hAttr = parseFloat(svg.getAttribute('height'));
+          if (wAttr && hAttr) {
+            svgWidth = wAttr;
+            svgHeight = hAttr;
+          } else {
+            svgWidth = svg.clientWidth || 800;
+            svgHeight = svg.clientHeight || 600;
+          }
+        }
+
+        const vRect = viewport.getBoundingClientRect();
+        const padX = 60;
+        const padY = 60;
+
+        const availableWidth = Math.max(vRect.width - padX * 2, 100);
+        const availableHeight = Math.max(vRect.height - padY * 2, 100);
+
+        const scaleX = availableWidth / svgWidth;
+        const scaleY = availableHeight / svgHeight;
+        const fitScale = Math.min(Math.max(Math.min(scaleX, scaleY), 0.1), 2.5);
+
+        state.zoom = fitScale;
+        state.panX = (vRect.width - svgWidth * state.zoom) / 2;
+        state.panY = (vRect.height - svgHeight * state.zoom) / 2;
+        updateTransform();
+      }
+
+      function resetZoom() {
+        state.zoom = 1.0;
+        const svg = canvas.querySelector('svg');
+        if (svg) {
+          const vRect = viewport.getBoundingClientRect();
+          let svgWidth = svg.clientWidth || 800;
+          let svgHeight = svg.clientHeight || 600;
+          state.panX = (vRect.width - svgWidth) / 2;
+          state.panY = (vRect.height - svgHeight) / 2;
+        } else {
+          state.panX = 0;
+          state.panY = 0;
+        }
+        updateTransform();
+      }
+
+      // Spacebar Grab Tool
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') {
+          const tag = (e.target && e.target.tagName) || '';
+          const isEditable = e.target && e.target.isContentEditable;
+          if (tag !== 'INPUT' && tag !== 'TEXTAREA' && !isEditable) {
+            if (!state.isSpacePressed) {
+              e.preventDefault();
+              state.isSpacePressed = true;
+              document.body.classList.add('space-pressed');
+            }
+          }
+        } else if (e.key === 'Escape') {
+          closeInspector();
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+          e.preventDefault();
+          toggleSidebar();
+        }
+      });
+
+      window.addEventListener('keyup', (e) => {
+        if (e.code === 'Space') {
+          state.isSpacePressed = false;
+          document.body.classList.remove('space-pressed');
+        }
+      });
+
+      // Mouse & Drag Panning Handlers
+      viewport.addEventListener('mousedown', (e) => {
+        // Left click with spacebar OR middle click (e.button === 1)
+        if (e.button === 1 || (e.button === 0 && state.isSpacePressed)) {
+          e.preventDefault();
+          state.isDragging = true;
+          state.dragStartX = e.clientX;
+          state.dragStartY = e.clientY;
+          state.lastMouseX = e.clientX;
+          state.lastMouseY = e.clientY;
+          state.dragDistance = 0;
+          document.body.classList.add('is-dragging');
+        }
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!state.isDragging) return;
+        const dx = e.clientX - state.lastMouseX;
+        const dy = e.clientY - state.lastMouseY;
+        state.panX += dx;
+        state.panY += dy;
+        state.lastMouseX = e.clientX;
+        state.lastMouseY = e.clientY;
+        state.dragDistance += Math.hypot(dx, dy);
+        updateTransform();
+      });
+
+      window.addEventListener('mouseup', (e) => {
+        if (state.isDragging) {
+          state.isDragging = false;
+          document.body.classList.remove('is-dragging');
+        }
+      });
+
+      // Cursor-Centered Mouse Wheel & Pinch Zoom
+      viewport.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        let factor;
+        if (e.ctrlKey) {
+          // Pinch gesture on trackpad
+          factor = Math.exp(-e.deltaY * 0.01);
+        } else {
+          // Standard mouse wheel
+          factor = e.deltaY < 0 ? 1.15 : 0.87;
+        }
+        zoomAt(factor, e.clientX, e.clientY);
+      }, { passive: false });
+
+      // Canvas Control Buttons
+      btnZoomIn.addEventListener('click', () => zoomAt(1.25));
+      btnZoomOut.addEventListener('click', () => zoomAt(0.8));
+      btnZoomReset.addEventListener('click', resetZoom);
+      btnFitView.addEventListener('click', fitToView);
+
+      // ─── Multi-Diagram Sidebar ─────────────────────────────────
+      function toggleSidebar() {
+        state.sidebarCollapsed = !state.sidebarCollapsed;
+        sidebar.classList.toggle('collapsed', state.sidebarCollapsed);
+      }
+      sidebarToggle.addEventListener('click', toggleSidebar);
+
+      function updateSidebar() {
+        diagramList.innerHTML = '';
+        diagramCount.textContent = state.diagrams.length;
+
+        state.diagrams.forEach((diagram) => {
+          const li = document.createElement('li');
+          li.className = 'diagram-item' + (diagram.id === state.activeId ? ' active' : '');
+          li.setAttribute('data-id', diagram.id);
+
+          const title = document.createElement('div');
+          title.className = 'item-title';
+          title.textContent = diagram.title || diagram.filename || diagram.id;
+
+          const filename = document.createElement('div');
+          filename.className = 'item-filename';
+          filename.textContent = diagram.filename || `${diagram.id}.md`;
+
+          li.appendChild(title);
+          li.appendChild(filename);
+
+          li.addEventListener('click', () => {
+            if (state.activeId !== diagram.id) {
+              selectDiagram(diagram.id, true);
+            }
+          });
+
+          diagramList.appendChild(li);
+        });
+      }
+
+      function selectDiagram(id, shouldFit = false) {
+        const diagram = state.diagrams.find(d => d.id === id);
+        if (!diagram) return;
+
+        state.activeId = id;
+
+        // Update Sidebar active item
+        document.querySelectorAll('.diagram-item').forEach(el => {
+          el.classList.toggle('active', el.getAttribute('data-id') === id);
+        });
+
+        // Update Topbar Document Badge
+        activeDocBadge.textContent = diagram.filename || `${diagram.id}.md`;
+        document.title = `${diagram.title || diagram.filename} — Super Dev`;
+
+        // Sync with browser URL without full page reload
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.set('doc', diagram.filename || diagram.id);
+          window.history.replaceState({ activeId: id }, '', url.toString());
+        } catch (e) {}
+
+        // Close Inspector on diagram change
+        closeInspector();
+
+        // Render Mermaid Diagram
+        renderActiveDiagram(shouldFit);
+      }
+
+      // ─── Mermaid Rendering ─────────────────────────────────────
+      let renderSeq = 0;
+      async function renderActiveDiagram(shouldFit = false) {
+        const diagram = state.diagrams.find(d => d.id === state.activeId);
+        if (!diagram || !diagram.mermaid) {
+          canvas.innerHTML = '';
+          emptyState.style.display = 'block';
+          return;
+        }
+
+        emptyState.style.display = 'none';
+        const currentSeq = ++renderSeq;
+        const renderId = `mermaid-canvas-${currentSeq}`;
+
+        try {
+          const { svg } = await mermaid.render(renderId, diagram.mermaid);
+          if (currentSeq !== renderSeq) return; // Discard stale render
+          canvas.innerHTML = svg;
+
+          const svgEl = canvas.querySelector('svg');
+          if (svgEl) {
+            svgEl.style.overflow = 'visible';
+            svgEl.style.display = 'block';
+          }
+
+          if (shouldFit) {
+            requestAnimationFrame(() => fitToView());
+          }
+        } catch (err) {
+          console.error('Mermaid render error:', err);
+          canvas.innerHTML = `
+            <div class="error-state">
+              <h3>Mermaid Syntax Error</h3>
+              <p>Unable to render diagram syntax for <code>${escapeHtml(diagram.filename)}</code>.</p>
+              <pre>${escapeHtml(err.message || String(err))}</pre>
+            </div>
+          `;
+        }
+      }
+
+      // ─── Node Inspector Drawer ─────────────────────────────────
+      function closeInspector() {
+        inspector.classList.remove('open');
+        clearNodeHighlight();
+      }
+      inspectorClose.addEventListener('click', closeInspector);
+
+      function clearNodeHighlight() {
+        if (state.selectedNodeEl) {
+          state.selectedNodeEl.classList.remove('node-selected');
+          state.selectedNodeEl = null;
+        }
+        document.querySelectorAll('.node-selected').forEach(el => el.classList.remove('node-selected'));
+      }
+
+      function highlightNode(nodeEl) {
+        clearNodeHighlight();
+        nodeEl.classList.add('node-selected');
+        state.selectedNodeEl = nodeEl;
+      }
+
+      function ensureNodeVisible(nodeEl) {
+        const vRect = viewport.getBoundingClientRect();
+        const nRect = nodeEl.getBoundingClientRect();
+        const drawerWidth = 400; // inspector drawer width
+        const drawerBoundary = vRect.right - drawerWidth;
+
+        // If node's right edge is occluded or within 20px of the drawer
+        if (nRect.right > drawerBoundary - 20) {
+          const shift = nRect.right - (drawerBoundary - 40);
+          state.panX -= shift;
+          updateTransform();
+        }
+      }
+
+      function findMatchingSection(candidateId, nodeText, diagram) {
+        if (!diagram || !diagram.sections) return null;
+        const sections = diagram.sections;
+
+        // 1. Exact key match
+        if (sections[candidateId]) return sections[candidateId];
+
+        // 2. Case-insensitive key match
+        const lowerCandidate = candidateId.toLowerCase();
+        for (const [key, section] of Object.entries(sections)) {
+          if (key.toLowerCase() === lowerCandidate) return section;
+          if (section.id && section.id.toLowerCase() === lowerCandidate) return section;
+        }
+
+        // 3. Match by numeric prefix (e.g. node "5" or section "5. Placement Chain")
+        const numMatch = candidateId.match(/^\d+$/) || (nodeText && nodeText.match(/^(\d+)[\.\s]/));
+        if (numMatch) {
+          const num = numMatch[1] || numMatch[0];
+          for (const section of Object.values(sections)) {
+            if (section.id === num || (section.title && section.title.startsWith(num + '.'))) {
+              return section;
+            }
+          }
+        }
+
+        // 4. Match by title or label substring
+        if (nodeText && nodeText.length > 2) {
+          const lowerText = nodeText.toLowerCase();
+          for (const section of Object.values(sections)) {
+            const secTitle = (section.title || '').toLowerCase();
+            if (secTitle.includes(lowerText) || lowerText.includes(secTitle)) {
+              return section;
+            }
+          }
+        }
+
+        return null;
+      }
+
+      function extractNodeId(nodeEl) {
+        // Flowchart node IDs: id="flowchart-A-12" or "flowchart-step1-55"
+        const rawId = nodeEl.id || '';
+        const match = rawId.match(/^flowchart-(.+)-\d+$/);
+        if (match) return match[1];
+        if (rawId.startsWith('flowchart-')) return rawId.replace(/^flowchart-/, '');
+        if (rawId) return rawId;
+
+        // Check data attributes
+        const dataId = nodeEl.getAttribute('data-id');
+        if (dataId) return dataId;
+
+        return 'unknown-node';
+      }
+
+      function extractNodeText(nodeEl) {
+        const labelEl = nodeEl.querySelector('.nodeLabel, .label') || nodeEl;
+        return (labelEl.textContent || '').trim();
+      }
+
+      function openInspector(nodeEl) {
+        highlightNode(nodeEl);
+
+        const diagram = state.diagrams.find(d => d.id === state.activeId);
+        const nodeId = extractNodeId(nodeEl);
+        const nodeText = extractNodeText(nodeEl);
+        const section = findMatchingSection(nodeId, nodeText, diagram);
+
+        // Header details
+        inspectorNodeId.textContent = nodeId;
+        inspectorTitle.textContent = section?.title || nodeText || nodeId;
+
+        // Status badge
+        const status = (section?.status || 'existing').toLowerCase();
+        inspectorStatus.textContent = status;
+        inspectorStatus.className = 'status-badge ' + (
+          status === 'new' ? 'new' :
+          status === 'existing' ? 'existing' :
+          status === 'deprecated' ? 'deprecated' : 'neutral'
+        );
+
+        // Body content rendered via Marked.js
+        if (section && section.rawContent) {
+          if (window.marked && typeof marked.parse === 'function') {
+            inspectorBody.innerHTML = marked.parse(section.rawContent);
+          } else {
+            inspectorBody.textContent = section.rawContent;
+          }
+        } else if (section && section.summary) {
+          if (window.marked && typeof marked.parse === 'function') {
+            inspectorBody.innerHTML = marked.parse(section.summary);
+          } else {
+            inspectorBody.textContent = section.summary;
+          }
+        } else {
+          inspectorBody.innerHTML = `
+            <p class="muted-note">No specification notes documented in this file for node <code>${escapeHtml(nodeId)}</code>.</p>
+          `;
+        }
+
+        inspector.classList.add('open');
+        ensureNodeVisible(nodeEl);
+      }
+
+      // Viewport Click Handling: Node Selection vs Background Click
+      viewport.addEventListener('click', (e) => {
+        // Drag suppression: > 4px movement is a pan, not a click
+        if (state.dragDistance > 4) {
+          state.dragDistance = 0;
+          return;
+        }
+        state.dragDistance = 0;
+
+        // Ignore clicks inside controls or inspector
+        if (e.target.closest('#canvas-controls') || e.target.closest('#inspector')) {
+          return;
+        }
+
+        const nodeEl = e.target.closest('.node, .cluster, g[id^="flowchart-"]');
+        if (nodeEl && canvas.contains(nodeEl)) {
+          openInspector(nodeEl);
+        } else {
+          closeInspector();
+        }
+      });
+
+      // ─── Export Features ───────────────────────────────────────
+      btnExportSvg.addEventListener('click', () => {
+        const svg = canvas.querySelector('svg');
+        if (!svg) {
+          alert('No rendered diagram available to export.');
+          return;
+        }
+
+        const clone = svg.cloneNode(true);
+        clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+
+        // Extract and inline stylesheet rules from document
+        let styleContent = '';
+        document.querySelectorAll('style').forEach((st) => {
+          if (st.textContent && (st.textContent.includes('.node') || st.textContent.includes('mermaid') || (st.id && st.id.includes('mermaid')))) {
+            styleContent += st.textContent + '\n';
+          }
+        });
+
+        if (styleContent) {
+          const styleEl = document.createElement('style');
+          styleEl.textContent = styleContent;
+          const defs = clone.querySelector('defs') || clone.insertBefore(document.createElementNS('http://www.w3.org/2000/svg', 'defs'), clone.firstChild);
+          defs.appendChild(styleEl);
+        }
+
+        const serializer = new XMLSerializer();
+        const svgString = '<?xml version="1.0" encoding="UTF-8"?>\n' + serializer.serializeToString(clone);
+        const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        const currentDoc = state.diagrams.find(d => d.id === state.activeId);
+        a.download = `${currentDoc?.id || 'architecture'}.svg`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+
+      btnExportHtml.addEventListener('click', () => {
+        // Generate self-contained standalone HTML bundle with embedded data
+        const bundleData = {
+          activeId: state.activeId,
+          diagrams: state.diagrams
+        };
+
+        const docClone = document.documentElement.cloneNode(true);
+
+        // Update embedded JSON script
+        const dataScript = docClone.querySelector('#arch-data');
+        if (dataScript) {
+          dataScript.textContent = JSON.stringify(bundleData, null, 2);
+        }
+
+        // Close inspector in exported bundle
+        const exportedInspector = docClone.querySelector('#inspector');
+        if (exportedInspector) {
+          exportedInspector.classList.remove('open');
+        }
+
+        const htmlString = '<!DOCTYPE html>\n' + docClone.outerHTML;
+        const blob = new Blob([htmlString], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        const currentDoc = state.diagrams.find(d => d.id === state.activeId);
+        a.download = `${currentDoc?.id || 'architecture'}-architecture.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+
+      // ─── Live Server-Sent Events (SSE) ─────────────────────────
+      function initLiveReload() {
+        if (!window.EventSource) return;
+
+        const sse = new EventSource('/events');
+
+        sse.onopen = () => {
+          liveDot.className = 'live-dot connected';
+          liveText.textContent = 'Live';
+        };
+
+        sse.onerror = () => {
+          liveDot.className = 'live-dot disconnected';
+          liveText.textContent = 'Offline';
+        };
+
+        sse.onmessage = (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (data.type === 'file_change') {
+              const idx = state.diagrams.findIndex(d => d.id === data.id);
+              if (idx >= 0) {
+                state.diagrams[idx] = data.diagram;
+              } else {
+                state.diagrams.push(data.diagram);
+              }
+              updateSidebar();
+
+              // If modified diagram is active, re-render PRESERVING pan and zoom!
+              if (state.activeId === data.id) {
+                renderActiveDiagram(false /* do not reset view */);
+              }
+            } else if (data.type === 'dir_change') {
+              state.diagrams = data.diagrams || [];
+              updateSidebar();
+              if (!state.diagrams.some(d => d.id === state.activeId) && state.diagrams.length > 0) {
+                selectDiagram(state.diagrams[0].id, true);
+              }
+            }
+          } catch (err) {
+            console.error('SSE message parsing error:', err);
+          }
+        };
+      }
+
+      // ─── Helpers ───────────────────────────────────────────────
+      function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      // ─── Startup Initialization ────────────────────────────────
+      async function init() {
+        let payload = null;
+
+        // 1. Read from embedded <script id="arch-data">
+        const dataScript = document.getElementById('arch-data');
+        if (dataScript && dataScript.textContent.trim()) {
+          try {
+            payload = JSON.parse(dataScript.textContent);
+          } catch (e) {
+            console.warn('Failed to parse #arch-data:', e);
+          }
+        }
+
+        // 2. Fallback to /api/diagrams if empty or absent
+        if (!payload || !payload.diagrams || payload.diagrams.length === 0) {
+          try {
+            const res = await fetch('/api/diagrams');
+            if (res.ok) {
+              const diagrams = await res.json();
+              payload = {
+                activeId: diagrams[0]?.id || null,
+                diagrams: diagrams
+              };
+            }
+          } catch (e) {}
+        }
+
+        if (payload && payload.diagrams && payload.diagrams.length > 0) {
+          state.diagrams = payload.diagrams;
+
+          // Check URL query param ?doc=...
+          const params = new URLSearchParams(window.location.search);
+          const requestedDoc = params.get('doc');
+          let targetId = payload.activeId;
+
+          if (requestedDoc) {
+            const match = state.diagrams.find(d => 
+              d.filename === requestedDoc || 
+              d.id === requestedDoc || 
+              d.filename === `${requestedDoc}.md`
+            );
+            if (match) {
+              targetId = match.id;
+            }
+          }
+
+          if (!targetId && state.diagrams.length > 0) {
+            targetId = state.diagrams[0].id;
+          }
+
+          updateSidebar();
+          selectDiagram(targetId, true);
+        } else {
+          emptyState.style.display = 'block';
+        }
+
+        // Initialize Live SSE stream
+        initLiveReload();
+      }
+
+      // Start application
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
+  </script>
+</body>
+</html>
