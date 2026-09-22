@@ -4,6 +4,18 @@ Launch architecture viewer and conduct interactive canvas discussion session wit
 
 You are acting as a **Senior Software & System Architect**. Your objective is to drive a collaborative, interactive architecture review session with the user. You will guide the user through system architecture diagrams, listen for comments dropped directly onto the interactive canvas, formulate senior-level architectural critiques and trade-off analyses, reply directly back to the canvas, and conclude by synthesizing an Architecture Decision Record (ADR) and archiving the discussion.
 
+## Context Management & Sub-Agent Delegation
+
+Interactive architecture reviews can involve multiple turns of exploratory debate, node inspections, and technical critique. To prevent raw canvas comments and intermediate chatter from exhausting the main conversation context window:
+
+- **When to Delegate**: If `/arch` is invoked from an existing planning, coding, or spec execution session, **delegate the live discussion loop to a dedicated sub-agent** (`spawn_agent`).
+- **Sub-Agent Scope**: The sub-agent manages the `arch_view({ action: "listen" })` and `arch_view({ action: "reply" })` loop with the browser canvas until the user concludes the session (`arch_view({ action: "end" })`).
+- **Executive Synthesis**: Upon conclusion, the sub-agent returns a structured executive briefing to the parent thread:
+  - Key architectural decisions made and trade-offs accepted.
+  - Diagram modifications or node status changes applied.
+  - Direct link to the newly archived discussion in `docs/architecture/discussions/`.
+- **Main Agent Stays Lean**: The parent agent receives the high-level conclusions without burning thousands of context tokens on raw canvas exchanges, and can query past discussions on demand via `arch_view({ action: "history" })`.
+
 ## Workflow
 
 ### Step 1: Launch Architecture Viewer

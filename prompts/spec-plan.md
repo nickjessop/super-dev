@@ -93,6 +93,7 @@ Present each finding as an **A/B question** (A = keep as-is, B = specific revisi
    - Best practices for the specific patterns you're designing
    - Focus on the 2–3 most important technical decisions — go deep, not wide
 3. **Read only the files you'll actually modify or extend.** Don't read the whole codebase — read the specific modules, types, and APIs relevant to your design.
+4. **Optional visual architecture review**: If the feature introduces architectural changes or new subsystem boundaries, ask the user if they'd like to explore and critique the design visually on the canvas via `/arch` before drafting `design.md`. Keep this strictly optional — only launch `/arch` if the user explicitly opts in.
 
 Then read and edit `.specs/<name>/design.md`. Cover:
 
