@@ -115,6 +115,7 @@ export interface ArchitectureDiagram {
 
 export interface ViewerInitialPayload {
   activeId: string;
+  projectName?: string;
   diagrams: ArchitectureDiagram[];
 }
 

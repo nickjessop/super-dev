@@ -324,7 +324,6 @@
       top: 0;
       left: 0;
       transform-origin: 0 0;
-      will-change: transform;
       pointer-events: auto;
     }
 
@@ -1080,7 +1079,7 @@
         <svg viewBox="0 0 16 16"><path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 13.25 15H2.75A1.75 1.75 0 0 1 1 13.25Zm4.5 10.75V2.5h-2.75a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25Zm1.5 0h6.25a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25H7Z"></path></svg>
       </button>
       <div class="app-title">
-        <span>Super Dev Architecture</span>
+        <span id="app-title-text">Super Dev Architecture</span>
       </div>
       <div class="divider"></div>
       <span id="active-doc-badge" class="doc-badge">overview.md</span>
@@ -1777,9 +1776,26 @@
       }
 
       // ─── Pan & Zoom Canvas Engine ──────────────────────────────
+      let sharpenTimer = null;
+      function scheduleSharpen() {
+        if (sharpenTimer) clearTimeout(sharpenTimer);
+        sharpenTimer = setTimeout(() => {
+          const svgEl = canvas.querySelector('svg');
+          if (svgEl) {
+            // Nudge opacity to force WebKit/Blink compositor layer refresh at new vector scale
+            const prev = svgEl.style.opacity;
+            svgEl.style.opacity = '0.9999';
+            requestAnimationFrame(() => {
+              svgEl.style.opacity = prev || '';
+            });
+          }
+        }, 60);
+      }
+
       function updateTransform() {
-        canvas.style.transform = `translate3d(${state.panX}px, ${state.panY}px, 0) scale(${state.zoom})`;
+        canvas.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
         btnZoomReset.textContent = `${Math.round(state.zoom * 100)}%`;
+        scheduleSharpen();
       }
 
       function zoomAt(factor, clientX, clientY) {
@@ -1825,19 +1841,41 @@
         }
 
         const vRect = viewport.getBoundingClientRect();
-        const padX = 60;
-        const padY = 60;
+        const padX = 40;
+        const padY = 40;
 
         const availableWidth = Math.max(vRect.width - padX * 2, 100);
         const availableHeight = Math.max(vRect.height - padY * 2, 100);
 
         const scaleX = availableWidth / svgWidth;
         const scaleY = availableHeight / svgHeight;
-        const fitScale = Math.min(Math.max(Math.min(scaleX, scaleY), 0.1), 2.5);
 
-        state.zoom = fitScale;
-        state.panX = (vRect.width - svgWidth * state.zoom) / 2;
-        state.panY = (vRect.height - svgHeight * state.zoom) / 2;
+        const isVeryTall = svgHeight / svgWidth > 1.35;
+        const isVeryWide = svgWidth / svgHeight > 2.2;
+
+        let fitScale;
+        if (isVeryTall) {
+          // For tall vertical flows, prioritize width and readability over fitting the entire height
+          // Scale so width fits comfortably, clamped to readable scale (0.75 - 1.15)
+          fitScale = Math.min(Math.max(scaleX * 0.9, 0.75), 1.15);
+          state.zoom = fitScale;
+          state.panX = (vRect.width - svgWidth * state.zoom) / 2;
+          state.panY = padY; // Start at the top so intake is immediately visible
+        } else if (isVeryWide) {
+          // For wide horizontal architectures, fit to height comfortably
+          fitScale = Math.min(Math.max(scaleY * 0.9, 0.65), 1.15);
+          state.zoom = fitScale;
+          state.panX = padX;
+          state.panY = Math.max((vRect.height - svgHeight * state.zoom) / 2, padY);
+        } else {
+          // Balanced aspect ratio: fit both dimensions with readable lower bound
+          const naturalFit = Math.min(scaleX, scaleY);
+          fitScale = Math.min(Math.max(naturalFit, 0.65), 1.25);
+          state.zoom = fitScale;
+          state.panX = (vRect.width - svgWidth * state.zoom) / 2;
+          state.panY = Math.max((vRect.height - svgHeight * state.zoom) / 2, padY);
+        }
+
         updateTransform();
       }
 
@@ -2061,6 +2099,7 @@
 
           const svgEl = canvas.querySelector('svg');
           if (svgEl) {
+            svgEl.style.maxWidth = 'none';
             svgEl.style.overflow = 'visible';
             svgEl.style.display = 'block';
           }
@@ -2465,6 +2504,13 @@
 
         if (payload && payload.diagrams && payload.diagrams.length > 0) {
           state.diagrams = payload.diagrams;
+
+          const projectName = payload.projectName || 'Super Dev';
+          const titleEl = document.getElementById('app-title-text');
+          if (titleEl) {
+            titleEl.textContent = `${projectName} Architecture`;
+          }
+          document.title = `${projectName} Architecture`;
 
           // Check URL query param ?doc=...
           const params = new URLSearchParams(window.location.search);

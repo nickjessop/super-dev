@@ -22,7 +22,7 @@ import { ttsTools } from "./lib/tts-tools.js";
 import { updateTools } from "./lib/update-tools.js";
 import { upstreamTools } from "./lib/upstream-tools.js";
 import { todoTools } from "./lib/todo-tools.js";
-import { archTools } from "./lib/arch-tools.js";
+import { archTools, stopAllArchServers, registerExitHooks } from "./lib/arch-tools.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const promptsDir = join(__dirname, "..", "prompts");
@@ -475,5 +475,14 @@ if (!disabledGroups.has("rules")) {
   );
 }
 
+registerExitHooks();
+
 const transport = new StdioServerTransport();
 await server.connect(transport);
+
+process.stdin.on("close", async () => {
+  try {
+    await stopAllArchServers();
+  } catch {}
+  process.exit(0);
+});

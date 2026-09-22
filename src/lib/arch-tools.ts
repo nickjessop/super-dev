@@ -752,6 +752,25 @@ export function findMatchingSection(
   return undefined;
 }
 
+/**
+ * Resolves the repository or project display name from package.json or project folder name.
+ */
+export function getProjectName(projectRoot: string): string {
+  try {
+    const pkgPath = path.join(projectRoot, "package.json");
+    if (fs.existsSync(pkgPath)) {
+      const content = fs.readFileSync(pkgPath, "utf-8");
+      const pkg = JSON.parse(content);
+      if (typeof pkg.name === "string" && pkg.name.trim()) {
+        return pkg.name.trim();
+      }
+    }
+  } catch {}
+
+  const base = path.basename(path.resolve(projectRoot));
+  return base || "Project";
+}
+
 // ---------------------------------------------------------------------------
 // HTML Viewer Template Resolution
 // ---------------------------------------------------------------------------
@@ -940,6 +959,7 @@ export interface StartArchServerOptions {
   projectRoot: string;
   dirPath: string;
   preferredPort?: number;
+  inactivityTimeoutMs?: number;
 }
 
 /**
@@ -959,6 +979,32 @@ export async function startArchServer(
   let currentDiagrams = scanArchitectureDir(normalizedDir);
   const sseClients = new Set<http.ServerResponse>();
 
+  // Inactivity timeout: close server if no active browser tabs for X minutes (default 15m)
+  const defaultIdleTimeout =
+    options.inactivityTimeoutMs !== undefined
+      ? options.inactivityTimeoutMs
+      : 15 * 60 * 1000;
+
+  let inactivityTimer: NodeJS.Timeout | null = null;
+
+  function resetInactivityTimer() {
+    if (inactivityTimer) {
+      clearTimeout(inactivityTimer);
+      inactivityTimer = null;
+    }
+    // Only arm shutdown timer if there are no active browser SSE clients connected
+    if (defaultIdleTimeout > 0 && sseClients.size === 0) {
+      inactivityTimer = setTimeout(async () => {
+        if (sseClients.size === 0) {
+          try {
+            await instance.close();
+          } catch {}
+        }
+      }, defaultIdleTimeout);
+      inactivityTimer.unref();
+    }
+  }
+
   function broadcastSSE(event: ArchServerEvent | ArchDiscussEvent) {
     const data = `data: ${JSON.stringify(event)}\n\n`;
     for (const client of sseClients) {
@@ -972,6 +1018,7 @@ export async function startArchServer(
 
   // Create HTTP server strictly bound to 127.0.0.1
   const server = http.createServer((req, res) => {
+    resetInactivityTimer();
     const parsedUrl = new URL(req.url || "/", "http://127.0.0.1");
     const pathname = parsedUrl.pathname;
 
@@ -1007,6 +1054,7 @@ export async function startArchServer(
 
         const initialPayload: ViewerInitialPayload = {
           activeId,
+          projectName: getProjectName(options.projectRoot),
           diagrams: currentDiagrams,
         };
 
@@ -1042,6 +1090,10 @@ export async function startArchServer(
       res.write(": connected\n\n");
 
       sseClients.add(res);
+      if (inactivityTimer) {
+        clearTimeout(inactivityTimer);
+        inactivityTimer = null;
+      }
 
       const pingInterval = setInterval(() => {
         try {
@@ -1056,6 +1108,9 @@ export async function startArchServer(
       req.on("close", () => {
         clearInterval(pingInterval);
         sseClients.delete(res);
+        if (sseClients.size === 0) {
+          resetInactivityTimer();
+        }
       });
       return;
     }
@@ -1532,6 +1587,10 @@ export async function startArchServer(
     getDiagrams: () => currentDiagrams,
     broadcastSSE,
     close: async () => {
+      if (inactivityTimer) {
+        clearTimeout(inactivityTimer);
+        inactivityTimer = null;
+      }
       if (debounceTimeout) {
         clearTimeout(debounceTimeout);
       }
@@ -1555,6 +1614,9 @@ export async function startArchServer(
   };
 
   activeServers.set(normalizedDir, instance);
+  // Arm initial inactivity timer in case browser is never opened
+  resetInactivityTimer();
+  registerExitHooks();
   return instance;
 }
 
@@ -1570,8 +1632,21 @@ export async function stopArchServer(dirPath: string): Promise<void> {
 }
 
 /**
- * Stops all currently running architecture preview servers.
+ * Registers process termination hooks to cleanly shut down preview servers on process exit.
  */
+let exitHooksRegistered = false;
+export function registerExitHooks(): void {
+  if (exitHooksRegistered) return;
+  exitHooksRegistered = true;
+
+  const cleanup = () => {
+    stopAllArchServers().catch(() => {});
+  };
+
+  process.on("SIGINT", cleanup);
+  process.on("SIGTERM", cleanup);
+  process.on("beforeExit", cleanup);
+}
 export async function stopAllArchServers(): Promise<void> {
   const promises: Promise<void>[] = [];
   for (const instance of activeServers.values()) {

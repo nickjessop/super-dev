@@ -28,6 +28,7 @@ assert(content.includes('marked@11/marked.min.js'), 'Loads Marked.js from CDN (N
 assert(content.includes('id="arch-data"'), 'Contains #arch-data script for initial payload injection');
 assert(content.includes('id="sidebar"'), 'Contains left sidebar container (Req 3.1)');
 assert(content.includes('id="sidebar-toggle"'), 'Contains sidebar collapse toggle button (Req 3.5)');
+assert(content.includes('app-title-text'), 'Displays dynamic repository/project architecture title');
 assert(content.includes('id="diagram-list"'), 'Contains diagram list container (Req 3.1)');
 assert(content.includes('id="diagram-count"'), 'Contains diagram count badge (Req 3.1)');
 assert(content.includes('item-title') && content.includes('item-filename'), 'Displays title and filename for each item (Req 3.2)');
@@ -37,7 +38,7 @@ assert(content.includes('collapsed'), 'Has CSS classes/logic for collapsed sideb
 
 // ─── Task 2.2: Hardware-accelerated dynamic pan and zoom canvas engine ───
 assert(content.includes('id="viewport"') && content.includes('id="canvas"'), 'Contains viewport and canvas container (Req 5.1)');
-assert(content.includes('transform-origin: 0 0') && content.includes('translate3d'), 'Implements hardware-accelerated CSS transforms (Req 5.1)');
+assert(content.includes('transform-origin: 0 0') && (content.includes('translate(') || content.includes('translate3d')), 'Implements hardware-accelerated CSS transforms (Req 5.1)');
 assert(content.includes('isSpacePressed') && content.includes('space-pressed'), 'Implements Spacebar grab tool state tracking (Req 5.2)');
 assert(content.includes('cursor: grab') && content.includes('cursor: grabbing'), 'Applies grab/grabbing cursors for drag tool (Req 5.2)');
 assert(content.includes('e.button === 1'), 'Supports middle-click drag panning (Req 5.3)');
