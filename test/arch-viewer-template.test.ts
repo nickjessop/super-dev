@@ -72,4 +72,30 @@ assert(content.includes('download') && content.includes('-architecture.html'), '
 assert(content.includes('EventSource(\'/events\')'), 'Includes Live SSE stream listener for live reload');
 assert(content.includes('file_change') && content.includes('dir_change'), 'Handles file_change and dir_change SSE events');
 
+// ─── Wave 3: Collaborative Live Canvas Comments & Discussion (Tasks 3.1, 3.2, 3.3) ───
+// Task 3.1: Comment Tool toggle, C hotkey, and canvas/coordinate pin placement
+assert(content.includes('id="btn-tool-comment"'), 'Contains Comment Tool button in toolbar (Req 2.1)');
+assert(content.includes("e.key === 'c'") || content.includes("e.key === 'C'"), 'Supports C key toggle for Comment Mode (Req 2.2)');
+assert(content.includes('id="comments-layer"'), 'Contains #comments-layer child inside #canvas (Req 2.3, 2.4)');
+assert(content.includes('commentModeActive'), 'Tracks commentModeActive state');
+assert(content.includes('crosshair'), 'Applies crosshair cursor in Comment Mode (Req 2.3)');
+assert(content.includes('/api/comments'), 'Communicates with /api/comments endpoint (Req 2.5)');
+assert(content.includes('cancelDraftComment'), 'Supports canceling draft comment on Escape (Req 2.6)');
+assert(content.includes('nodeEl') && content.includes('extractNodeId'), 'Detects clicked node and anchors comment pin (Req 2.4)');
+
+// Task 3.2: Threaded popover speech bubble with agent reply & typing state
+assert(content.includes('comment-popover'), 'Renders threaded popover card (Req 4.2)');
+assert(content.includes('agent_typing') && content.includes('Agent is thinking...'), 'Displays typing indicator when agent is thinking (Req 4.3)');
+assert(content.includes('agent_reply'), 'Handles agent_reply SSE event with markdown formatting (Req 4.1, 4.2)');
+assert(content.includes('/resolve'), 'Supports POST /api/comments/:id/resolve (Req 4.2)');
+assert(content.includes('btn-resolve'), 'Provides thread resolve button (Req 4.2)');
+assert(content.includes('btn-reply-send') || content.includes('sendReply'), 'Includes follow-up reply input and send action (Req 4.2)');
+
+// Task 3.3: End Discussion header action with badge
+assert(content.includes('id="btn-end-session"'), 'Contains End Discussion button in header bar (Req 5.1)');
+assert(content.includes('id="unresolved-badge"'), 'Displays unresolved comments count badge in header (Req 5.1)');
+assert(content.includes('/api/session/end'), 'Triggers POST /api/session/end on End Discussion click (Req 5.2)');
+assert(content.includes('session_ended'), 'Handles session_ended SSE event (Req 5.2)');
+assert(content.includes('compiling the Architecture Decision Record') || content.includes('Architecture Decision Record'), 'Displays ADR compilation notification');
+
 console.log('\n🎉 All arch-viewer.html template verification checks passed successfully!');

@@ -1235,6 +1235,7 @@ export async function startArchServer(
           };
 
           notifyWaiters(listenEvent);
+          broadcastSSE({ type: "comment_added", thread: targetThread });
           broadcastSSE({ type: "agent_typing", commentId: targetThread.id });
 
           res.writeHead(200, {

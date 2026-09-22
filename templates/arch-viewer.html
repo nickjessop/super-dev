@@ -638,6 +638,430 @@
         display: none;
       }
     }
+
+    /* ─── Wave 3: Canvas Comments, Pins & Discussion Popovers ─── */
+    .ctrl-divider {
+      width: 1px;
+      height: 16px;
+      background: var(--border-color);
+      margin: 0 2px;
+    }
+
+    #btn-tool-comment {
+      font-size: 13px;
+      position: relative;
+    }
+    #btn-tool-comment.active {
+      background: var(--accent-blue-bg);
+      border: 1px solid var(--accent-blue);
+      color: #79c0ff;
+      box-shadow: 0 0 8px rgba(56, 139, 253, 0.4);
+    }
+
+    body.comment-mode #viewport,
+    body.comment-mode #canvas {
+      cursor: crosshair !important;
+    }
+
+    /* End Discussion Header Button & Unresolved Badge */
+    #btn-end-session {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-bright);
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      user-select: none;
+    }
+    #btn-end-session:hover {
+      background: var(--bg-hover);
+      border-color: var(--accent-red);
+      color: #ff7b72;
+    }
+    #btn-end-session.ended {
+      opacity: 0.6;
+      cursor: not-allowed;
+      border-color: var(--border-color);
+      color: var(--text-muted);
+    }
+    .end-icon {
+      font-size: 11px;
+      color: var(--accent-red);
+      display: inline-flex;
+      align-items: center;
+    }
+    .badge, #unresolved-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 9px;
+      background: var(--accent-amber);
+      color: #0d1117;
+      line-height: 1;
+      margin-left: 2px;
+      transition: background-color 0.2s ease;
+    }
+    #unresolved-badge.resolved-zero {
+      background: var(--bg-hover);
+      color: var(--text-muted);
+    }
+
+    /* Toast Notification Banner */
+    #toast-banner {
+      position: fixed;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--bg-surface);
+      color: var(--text-bright);
+      border: 1px solid var(--accent-blue);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      gap: 10px;
+      pointer-events: auto;
+    }
+    #toast-banner.show {
+      display: flex;
+      animation: fadeInToast 0.25s ease-out;
+    }
+    @keyframes fadeInToast {
+      from { opacity: 0; transform: translate(-50%, -8px); }
+      to { opacity: 1; transform: translate(-50%, 0); }
+    }
+
+    /* Comments Layer & Pins */
+    #comments-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 25;
+    }
+
+    .comment-pin {
+      position: absolute;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transform: translate(-50%, -50%);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      pointer-events: auto;
+      user-select: none;
+      z-index: 30;
+    }
+    .comment-pin:hover {
+      transform: translate(-50%, -50%) scale(1.15);
+    }
+    .comment-pin.open {
+      background: linear-gradient(135deg, #388bfd, #1f6feb);
+      color: #ffffff;
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 10px rgba(56, 139, 253, 0.7);
+    }
+    .comment-pin.open.active {
+      transform: translate(-50%, -50%) scale(1.2);
+      box-shadow: 0 0 16px rgba(56, 139, 253, 0.9);
+      border-color: #79c0ff;
+    }
+    .comment-pin.resolved {
+      background: linear-gradient(135deg, #2ea043, #238636);
+      color: #ffffff;
+      border: 2px solid rgba(255, 255, 255, 0.85);
+      box-shadow: 0 0 8px rgba(46, 160, 67, 0.5);
+    }
+    .comment-pin.resolved.active {
+      transform: translate(-50%, -50%) scale(1.2);
+      box-shadow: 0 0 14px rgba(46, 160, 67, 0.8);
+    }
+    .comment-pin.draft {
+      background: linear-gradient(135deg, #f0883e, #d29922);
+      color: #ffffff;
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 12px rgba(240, 136, 62, 0.8);
+      animation: pinPulse 1.6s infinite ease-in-out;
+    }
+    @keyframes pinPulse {
+      0%, 100% { box-shadow: 0 0 8px rgba(240, 136, 62, 0.6); }
+      50% { box-shadow: 0 0 18px rgba(240, 136, 62, 1); }
+    }
+
+    /* Discussion Card Popover */
+    .comment-popover {
+      position: absolute;
+      width: 340px;
+      max-width: 90vw;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+      pointer-events: auto;
+      z-index: 60;
+      user-select: text;
+      overflow: hidden;
+      animation: popoverFadeIn 0.15s ease-out;
+    }
+    @keyframes popoverFadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .popover-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-subtle);
+    }
+    .popover-header-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .popover-number {
+      font-weight: 600;
+      font-size: 12px;
+      color: var(--text-bright);
+    }
+    .popover-node-badge {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 11px;
+      background: var(--accent-blue-bg);
+      color: var(--accent-blue);
+      border: 1px solid rgba(56, 139, 253, 0.3);
+      padding: 1px 6px;
+      border-radius: 4px;
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .status-pill.resolved {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      background: var(--accent-green-bg);
+      color: var(--accent-green);
+      border: 1px solid rgba(63, 185, 80, 0.3);
+      padding: 1px 6px;
+      border-radius: 10px;
+    }
+    .popover-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-resolve {
+      background: var(--accent-green-bg);
+      color: var(--accent-green);
+      border: 1px solid rgba(63, 185, 80, 0.4);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-resolve:hover {
+      background: var(--accent-green);
+      color: #ffffff;
+    }
+    .btn-popover-close {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 12px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: all 0.15s ease;
+    }
+    .btn-popover-close:hover {
+      color: var(--text-bright);
+      background: var(--bg-hover);
+    }
+
+    .popover-body {
+      padding: 10px 12px;
+    }
+    .popover-messages {
+      max-height: 260px;
+      overflow-y: auto;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .comment-message {
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .comment-message.agent {
+      background: rgba(56, 139, 253, 0.08);
+      border: 1px solid rgba(56, 139, 253, 0.2);
+    }
+    .comment-message.user {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+    }
+    .msg-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+      font-size: 11px;
+    }
+    .msg-author {
+      font-weight: 600;
+      color: var(--text-bright);
+    }
+    .msg-time {
+      color: var(--text-muted);
+      font-size: 10px;
+      margin-left: auto;
+    }
+    .msg-body {
+      color: var(--text-main);
+      word-break: break-word;
+    }
+    .msg-body p {
+      margin-bottom: 4px;
+    }
+    .msg-body p:last-child {
+      margin-bottom: 0;
+    }
+    .msg-body code {
+      background: var(--bg-hover);
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+    }
+    .msg-body pre {
+      background: #0d1117;
+      padding: 6px 8px;
+      border-radius: 4px;
+      overflow-x: auto;
+      margin: 4px 0;
+    }
+    .msg-body pre code {
+      background: transparent;
+      padding: 0;
+    }
+
+    .agent-typing-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: rgba(56, 139, 253, 0.08);
+      border: 1px dashed rgba(56, 139, 253, 0.3);
+      border-radius: 6px;
+      font-size: 12px;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+    .typing-dots {
+      display: inline-flex;
+      gap: 3px;
+    }
+    .typing-dots .dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--accent-blue);
+      animation: typingBounce 1.4s infinite ease-in-out both;
+    }
+    .typing-dots .dot:nth-child(1) { animation-delay: -0.32s; }
+    .typing-dots .dot:nth-child(2) { animation-delay: -0.16s; }
+    @keyframes typingBounce {
+      0%, 80%, 100% { transform: scale(0); opacity: 0.3; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+
+    .popover-reply {
+      padding: 8px 12px;
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-surface);
+    }
+    .reply-textarea {
+      width: 100%;
+      box-sizing: border-box;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      color: var(--text-bright);
+      padding: 6px 8px;
+      font-size: 12px;
+      font-family: inherit;
+      resize: vertical;
+      outline: none;
+      line-height: 1.4;
+    }
+    .reply-textarea:focus {
+      border-color: var(--accent-blue);
+    }
+    .reply-actions, .draft-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .btn-reply-send, .btn-submit {
+      background: var(--accent-blue);
+      color: #ffffff;
+      border: none;
+      border-radius: 4px;
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s ease;
+    }
+    .btn-reply-send:hover, .btn-submit:hover {
+      opacity: 0.9;
+    }
+    .btn-cancel {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-cancel:hover {
+      color: var(--text-bright);
+      background: var(--bg-subtle);
+    }
   </style>
 </head>
 <body>
@@ -664,6 +1088,9 @@
     </div>
 
     <div class="header-right">
+      <button id="btn-end-session" class="btn btn-secondary btn-action" title="End Discussion and compile decisions">
+        <span class="end-icon">⏹</span> End Discussion <span id="unresolved-badge" class="badge">0</span>
+      </button>
       <button id="btn-export-svg" class="btn-action" title="Export rendered SVG vector">
         <svg viewBox="0 0 16 16"><path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"></path><path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.969a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.78a.749.749 0 1 1 1.06-1.06l1.97 1.969Z"></path></svg>
         Export SVG
@@ -674,6 +1101,12 @@
       </button>
     </div>
   </header>
+
+  <!-- Toast Notification Banner -->
+  <div id="toast-banner" class="toast-banner">
+    <span class="toast-icon">ℹ️</span>
+    <span id="toast-message"></span>
+  </div>
 
   <!-- 3-Pane Layout -->
   <main id="app">
@@ -690,10 +1123,14 @@
 
     <!-- Center Canvas Viewport -->
     <section id="viewport">
-      <div id="canvas"></div>
+      <div id="canvas">
+        <div id="comments-layer" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;"></div>
+      </div>
 
       <!-- Floating Controls -->
       <div id="canvas-controls">
+        <button id="btn-tool-comment" class="ctrl-btn canvas-btn" title="Comment Tool (C)">💬</button>
+        <div class="ctrl-divider"></div>
         <button id="btn-zoom-in" class="ctrl-btn" title="Zoom In (+)">
           <svg viewBox="0 0 16 16"><path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z"></path></svg>
         </button>
@@ -775,7 +1212,13 @@
         lastMouseY: 0,
         dragDistance: 0,
         sidebarCollapsed: false,
-        selectedNodeEl: null
+        selectedNodeEl: null,
+        // Wave 3 discussion state
+        commentModeActive: false,
+        comments: [],
+        activeCommentId: null,
+        draftComment: null,
+        agentTyping: new Set()
       };
 
       // ─── DOM Element References ────────────────────────────────
@@ -800,11 +1243,530 @@
       const btnZoomReset = document.getElementById('btn-zoom-reset');
       const btnFitView = document.getElementById('btn-fit-view');
 
+      const btnToolComment = document.getElementById('btn-tool-comment');
+      const btnEndSession = document.getElementById('btn-end-session');
+      const unresolvedBadge = document.getElementById('unresolved-badge');
+
       const btnExportSvg = document.getElementById('btn-export-svg');
       const btnExportHtml = document.getElementById('btn-export-html');
 
       const liveDot = document.getElementById('live-dot');
       const liveText = document.getElementById('live-text');
+
+      // ─── Discussion & Comment State Management ─────────────────
+      function getCurrentDocFilename() {
+        const diagram = state.diagrams.find(d => d.id === state.activeId);
+        return diagram ? (diagram.filename || `${diagram.id}.md`) : 'overview.md';
+      }
+
+      function ensureCommentsLayer() {
+        let layer = document.getElementById('comments-layer');
+        if (!layer || !canvas.contains(layer)) {
+          layer = document.createElement('div');
+          layer.id = 'comments-layer';
+          layer.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
+          canvas.appendChild(layer);
+        }
+        return layer;
+      }
+
+      function updateUnresolvedBadge() {
+        if (!unresolvedBadge) return;
+        const currentDoc = getCurrentDocFilename();
+        const docThreads = state.comments.filter(t => 
+          t.doc === currentDoc || 
+          t.doc === `${currentDoc}.md` ||
+          (t.doc && t.doc.endsWith('.json') && t.doc.slice(0, -5) === currentDoc)
+        );
+        const count = docThreads.filter(t => t.status !== 'resolved').length;
+        unresolvedBadge.textContent = count;
+        unresolvedBadge.classList.toggle('resolved-zero', count === 0);
+      }
+
+      let toastTimer = null;
+      function showToast(message, duration = 4500) {
+        const toast = document.getElementById('toast-banner');
+        const msgEl = document.getElementById('toast-message');
+        if (!toast || !msgEl) return;
+        msgEl.textContent = message;
+        toast.classList.add('show');
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+          toast.classList.remove('show');
+        }, duration);
+      }
+
+      function formatTime(timestamp) {
+        if (!timestamp) return '';
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diffMs = now.getTime() - date.getTime();
+        if (diffMs < 60000) return 'Just now';
+        if (diffMs < 3600000) return `${Math.floor(diffMs / 60000)}m ago`;
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+
+      function toggleCommentMode(force) {
+        state.commentModeActive = typeof force === 'boolean' ? force : !state.commentModeActive;
+        if (btnToolComment) btnToolComment.classList.toggle('active', state.commentModeActive);
+        document.body.classList.toggle('comment-mode', state.commentModeActive);
+        if (!state.commentModeActive && state.draftComment) {
+          cancelDraftComment();
+        }
+      }
+      if (btnToolComment) {
+        btnToolComment.addEventListener('click', () => toggleCommentMode());
+      }
+
+      async function endDiscussionSession() {
+        try {
+          const res = await fetch('/api/session/end', { method: 'POST' });
+          if (res.ok) {
+            showToast('Discussion ended. Agent is compiling the Architecture Decision Record...');
+            if (btnEndSession) btnEndSession.classList.add('ended');
+          }
+        } catch (err) {
+          console.error('Failed to end discussion session:', err);
+        }
+      }
+      if (btnEndSession) {
+        btnEndSession.addEventListener('click', endDiscussionSession);
+      }
+
+      async function loadDocComments(doc) {
+        if (!doc) return;
+        try {
+          const res = await fetch(`/api/comments?doc=${encodeURIComponent(doc)}`);
+          if (res.ok) {
+            const threads = await res.json();
+            if (Array.isArray(threads)) {
+              state.comments = state.comments.filter(t => t.doc !== doc && t.doc !== `${doc}.md`).concat(threads);
+            }
+            updateUnresolvedBadge();
+            renderComments();
+          }
+        } catch (err) {
+          console.warn('Failed to load comments for doc:', doc, err);
+        }
+      }
+
+      function findNodeElement(nodeId) {
+        if (!nodeId) return null;
+        try {
+          const escaped = CSS.escape ? CSS.escape(nodeId) : nodeId;
+          let el = canvas.querySelector(`g#flowchart-${escaped}, g[id^="flowchart-${escaped}-"]`);
+          if (el) return el;
+          el = canvas.querySelector(`g#${escaped}, [data-id="${escaped}"]`);
+          if (el) return el;
+        } catch (e) {}
+
+        const nodes = canvas.querySelectorAll('.node, .cluster');
+        for (const n of nodes) {
+          if (extractNodeId(n) === nodeId) return n;
+        }
+        return null;
+      }
+
+      function addOrUpdateThread(thread) {
+        if (!thread || !thread.id) return;
+        const idx = state.comments.findIndex(t => t.id === thread.id);
+        if (idx >= 0) {
+          state.comments[idx] = thread;
+        } else {
+          state.comments.push(thread);
+        }
+        updateUnresolvedBadge();
+      }
+
+      function openDraftComment(x, y, nodeId) {
+        state.draftComment = { x, y, nodeId };
+        state.activeCommentId = null;
+        renderComments();
+
+        setTimeout(() => {
+          const textarea = document.getElementById('draft-comment-text');
+          if (textarea) textarea.focus();
+        }, 50);
+      }
+
+      function cancelDraftComment() {
+        state.draftComment = null;
+        renderComments();
+      }
+
+      async function submitDraftComment() {
+        if (!state.draftComment) return;
+        const textarea = document.getElementById('draft-comment-text');
+        const text = textarea ? textarea.value.trim() : '';
+        if (!text) {
+          cancelDraftComment();
+          return;
+        }
+
+        const currentDoc = getCurrentDocFilename();
+        const { x, y, nodeId } = state.draftComment;
+
+        cancelDraftComment();
+        toggleCommentMode(false);
+
+        try {
+          const payload = {
+            doc: currentDoc,
+            nodeId: nodeId || undefined,
+            text,
+            x: Math.round(x),
+            y: Math.round(y),
+            author: 'user',
+            createdAt: Date.now()
+          };
+          const res = await fetch('/api/comments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.thread) {
+              addOrUpdateThread(data.thread);
+              state.activeCommentId = data.thread.id;
+              renderComments();
+            }
+          }
+        } catch (err) {
+          console.error('Failed to submit comment:', err);
+        }
+      }
+
+      async function sendReply(threadId, text) {
+        const trimmed = (text || '').trim();
+        if (!trimmed) return;
+        const currentDoc = getCurrentDocFilename();
+
+        try {
+          const payload = {
+            id: threadId,
+            doc: currentDoc,
+            text: trimmed,
+            author: 'user'
+          };
+          const res = await fetch('/api/comments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.thread) {
+              addOrUpdateThread(data.thread);
+              renderComments();
+            }
+          }
+        } catch (err) {
+          console.error('Failed to send follow-up reply:', err);
+        }
+      }
+
+      async function resolveThread(threadId) {
+        const currentDoc = getCurrentDocFilename();
+        try {
+          const res = await fetch(`/api/comments/${encodeURIComponent(threadId)}/resolve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ doc: currentDoc })
+          });
+          if (res.ok) {
+            const t = state.comments.find(c => c.id === threadId);
+            if (t) {
+              t.status = 'resolved';
+            }
+            state.agentTyping.delete(threadId);
+            updateUnresolvedBadge();
+            renderComments();
+          }
+        } catch (err) {
+          console.error('Failed to resolve comment thread:', err);
+        }
+      }
+
+      function renderComments() {
+        const layer = ensureCommentsLayer();
+        layer.innerHTML = '';
+
+        const currentDoc = getCurrentDocFilename();
+        const diagram = state.diagrams.find(d => d.id === state.activeId);
+
+        // Filter threads for active diagram
+        const docThreads = state.comments.filter(t => 
+          t.doc === currentDoc || 
+          t.doc === diagram?.filename || 
+          t.doc === `${diagram?.id}.md` ||
+          t.doc === diagram?.id
+        );
+
+        // 1. Render permanent comment pins
+        docThreads.forEach((thread, index) => {
+          let pinX = thread.x;
+          let pinY = thread.y;
+
+          if (thread.nodeId) {
+            const nodeEl = findNodeElement(thread.nodeId);
+            if (nodeEl) {
+              const cRect = canvas.getBoundingClientRect();
+              const nRect = nodeEl.getBoundingClientRect();
+              if (nRect.width > 0 && nRect.height > 0) {
+                pinX = (nRect.right - cRect.left) / state.zoom;
+                pinY = (nRect.top - cRect.top) / state.zoom;
+              }
+            }
+          }
+
+          const isResolved = thread.status === 'resolved';
+          const isActive = state.activeCommentId === thread.id;
+
+          const pinEl = document.createElement('div');
+          pinEl.className = `comment-pin ${isResolved ? 'resolved' : 'open'} ${isActive ? 'active' : ''}`;
+          pinEl.style.left = `${pinX}px`;
+          pinEl.style.top = `${pinY}px`;
+          pinEl.title = `Comment #${index + 1}${thread.nodeId ? ' on ' + thread.nodeId : ''}`;
+          pinEl.innerHTML = isResolved ? '✓' : `<span>${index + 1}</span>`;
+
+          pinEl.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            state.activeCommentId = state.activeCommentId === thread.id ? null : thread.id;
+            if (state.draftComment) state.draftComment = null;
+            renderComments();
+          });
+
+          layer.appendChild(pinEl);
+
+          if (isActive) {
+            const popoverEl = createThreadPopover(thread, index, pinX, pinY);
+            layer.appendChild(popoverEl);
+          }
+        });
+
+        // 2. Render Draft Pin & Popover
+        if (state.draftComment) {
+          const { x, y, nodeId } = state.draftComment;
+          const draftPin = document.createElement('div');
+          draftPin.className = 'comment-pin draft active';
+          draftPin.style.left = `${x}px`;
+          draftPin.style.top = `${y}px`;
+          draftPin.innerHTML = '💬';
+          layer.appendChild(draftPin);
+
+          const draftPopover = createDraftPopover(x, y, nodeId);
+          layer.appendChild(draftPopover);
+        }
+      }
+
+      function createThreadPopover(thread, index, pinX, pinY) {
+        const popover = document.createElement('div');
+        popover.className = 'comment-popover';
+
+        const popoverWidth = 340;
+        const vRect = viewport.getBoundingClientRect();
+        const screenX = state.panX + pinX * state.zoom;
+        let popoverX = pinX + 16;
+        let popoverY = pinY - 12;
+
+        if (screenX + popoverWidth * state.zoom > vRect.width - 20) {
+          popoverX = pinX - popoverWidth - 16;
+        }
+        if (popoverX < 10) popoverX = 10;
+        if (popoverY < 10) popoverY = 10;
+
+        popover.style.left = `${popoverX}px`;
+        popover.style.top = `${popoverY}px`;
+
+        const isResolved = thread.status === 'resolved';
+        const isThinking = state.agentTyping.has(thread.id);
+
+        const headerHtml = `
+          <div class="popover-header">
+            <div class="popover-header-left">
+              <span class="popover-number">#${index + 1}</span>
+              ${thread.nodeId ? `<span class="popover-node-badge" title="Referenced Node">${escapeHtml(thread.nodeId)}</span>` : ''}
+              ${isResolved ? '<span class="status-pill resolved">Resolved</span>' : ''}
+            </div>
+            <div class="popover-header-actions">
+              ${!isResolved ? `<button class="btn-resolve" title="Mark as resolved">✓ Resolve</button>` : ''}
+              <button class="btn-popover-close" title="Close">✕</button>
+            </div>
+          </div>
+        `;
+
+        let messagesHtml = '<div class="popover-messages">';
+        (thread.messages || []).forEach(msg => {
+          const isAgent = msg.author === 'agent';
+          const avatar = isAgent ? '🤖' : '👤';
+          const authorName = isAgent ? 'Super Dev' : 'You';
+          const timeStr = formatTime(msg.createdAt);
+          let bodyContent = '';
+          if (isAgent) {
+            bodyContent = window.marked && typeof marked.parse === 'function' ? marked.parse(msg.text) : escapeHtml(msg.text);
+          } else {
+            bodyContent = `<p>${escapeHtml(msg.text)}</p>`;
+          }
+
+          messagesHtml += `
+            <div class="comment-message ${isAgent ? 'agent' : 'user'}">
+              <div class="msg-header">
+                <span class="msg-avatar">${avatar}</span>
+                <span class="msg-author">${authorName}</span>
+                <span class="msg-time">${timeStr}</span>
+              </div>
+              <div class="msg-body">${bodyContent}</div>
+            </div>
+          `;
+        });
+
+        if (isThinking) {
+          messagesHtml += `
+            <div class="agent-typing-indicator">
+              <span class="typing-avatar">🤖</span>
+              <span class="typing-dots">
+                <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+              </span>
+              <span class="typing-text">Agent is thinking...</span>
+            </div>
+          `;
+        }
+        messagesHtml += '</div>';
+
+        const replyHtml = !isResolved ? `
+          <div class="popover-reply">
+            <textarea class="reply-textarea" placeholder="Reply to thread... (Enter to send, Shift+Enter for newline)" rows="2"></textarea>
+            <div class="reply-actions">
+              <button class="btn-reply-send">Send</button>
+            </div>
+          </div>
+        ` : '';
+
+        popover.innerHTML = headerHtml + messagesHtml + replyHtml;
+
+        const closeBtn = popover.querySelector('.btn-popover-close');
+        if (closeBtn) {
+          closeBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            state.activeCommentId = null;
+            renderComments();
+          });
+        }
+
+        const resolveBtn = popover.querySelector('.btn-resolve');
+        if (resolveBtn) {
+          resolveBtn.addEventListener('click', async (ev) => {
+            ev.stopPropagation();
+            await resolveThread(thread.id);
+          });
+        }
+
+        const replyTextarea = popover.querySelector('.reply-textarea');
+        const replySendBtn = popover.querySelector('.btn-reply-send');
+
+        const doReply = async () => {
+          if (!replyTextarea) return;
+          const text = replyTextarea.value.trim();
+          if (!text) return;
+          replyTextarea.value = '';
+          await sendReply(thread.id, text);
+        };
+
+        if (replySendBtn) {
+          replySendBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            doReply();
+          });
+        }
+
+        if (replyTextarea) {
+          replyTextarea.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter' && !ev.shiftKey) {
+              ev.preventDefault();
+              doReply();
+            } else if (ev.key === 'Escape') {
+              ev.stopPropagation();
+              state.activeCommentId = null;
+              renderComments();
+            }
+          });
+        }
+
+        const msgsContainer = popover.querySelector('.popover-messages');
+        if (msgsContainer) {
+          requestAnimationFrame(() => {
+            msgsContainer.scrollTop = msgsContainer.scrollHeight;
+          });
+        }
+
+        return popover;
+      }
+
+      function createDraftPopover(x, y, nodeId) {
+        const popover = document.createElement('div');
+        popover.className = 'comment-popover draft-popover';
+
+        const popoverWidth = 320;
+        const vRect = viewport.getBoundingClientRect();
+        const screenX = state.panX + x * state.zoom;
+        let popoverX = x + 16;
+        let popoverY = y - 12;
+
+        if (screenX + popoverWidth * state.zoom > vRect.width - 20) {
+          popoverX = x - popoverWidth - 16;
+        }
+        if (popoverX < 10) popoverX = 10;
+        if (popoverY < 10) popoverY = 10;
+
+        popover.style.left = `${popoverX}px`;
+        popover.style.top = `${popoverY}px`;
+
+        popover.innerHTML = `
+          <div class="popover-header">
+            <div class="popover-header-left">
+              <span class="popover-number">New Comment</span>
+              ${nodeId ? `<span class="popover-node-badge" title="Referenced Node">${escapeHtml(nodeId)}</span>` : ''}
+            </div>
+            <div class="popover-header-actions">
+              <button class="btn-popover-close" id="btn-draft-close" title="Cancel (Esc)">✕</button>
+            </div>
+          </div>
+          <div class="popover-body">
+            <textarea id="draft-comment-text" class="reply-textarea" placeholder="Ask a question or critique this architecture... (Enter to send)" rows="3"></textarea>
+            <div class="draft-actions">
+              <button class="btn-cancel" id="btn-draft-cancel">Cancel</button>
+              <button class="btn-submit" id="btn-draft-submit">Send</button>
+            </div>
+          </div>
+        `;
+
+        popover.querySelector('#btn-draft-close').addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          cancelDraftComment();
+        });
+        popover.querySelector('#btn-draft-cancel').addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          cancelDraftComment();
+        });
+        popover.querySelector('#btn-draft-submit').addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          submitDraftComment();
+        });
+
+        const textarea = popover.querySelector('#draft-comment-text');
+        textarea.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter' && !ev.shiftKey) {
+            ev.preventDefault();
+            submitDraftComment();
+          } else if (ev.key === 'Escape') {
+            ev.stopPropagation();
+            cancelDraftComment();
+          }
+        });
+
+        return popover;
+      }
 
       // ─── Pan & Zoom Canvas Engine ──────────────────────────────
       function updateTransform() {
@@ -887,7 +1849,7 @@
         updateTransform();
       }
 
-      // Spacebar Grab Tool
+      // Spacebar Grab Tool & Comment Mode Hotkey
       window.addEventListener('keydown', (e) => {
         if (e.code === 'Space') {
           const tag = (e.target && e.target.tagName) || '';
@@ -900,7 +1862,23 @@
             }
           }
         } else if (e.key === 'Escape') {
+          if (state.draftComment) {
+            cancelDraftComment();
+            return;
+          }
+          if (state.activeCommentId) {
+            state.activeCommentId = null;
+            renderComments();
+            return;
+          }
           closeInspector();
+        } else if (e.key === 'c' || e.key === 'C') {
+          const tag = (e.target && e.target.tagName) || '';
+          const isEditable = e.target && e.target.isContentEditable;
+          if (tag !== 'INPUT' && tag !== 'TEXTAREA' && !isEditable && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            toggleCommentMode();
+          }
         } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
           e.preventDefault();
           toggleSidebar();
@@ -1045,6 +2023,9 @@
         // Close Inspector on diagram change
         closeInspector();
 
+        // Load comments for active diagram
+        loadDocComments(diagram.filename || `${diagram.id}.md`);
+
         // Render Mermaid Diagram
         renderActiveDiagram(shouldFit);
       }
@@ -1067,6 +2048,8 @@
           const { svg } = await mermaid.render(renderId, diagram.mermaid);
           if (currentSeq !== renderSeq) return; // Discard stale render
           canvas.innerHTML = svg;
+          ensureCommentsLayer();
+          renderComments();
 
           const svgEl = canvas.querySelector('svg');
           if (svgEl) {
@@ -1227,7 +2210,7 @@
         ensureNodeVisible(nodeEl);
       }
 
-      // Viewport Click Handling: Node Selection vs Background Click
+      // Viewport Click Handling: Comment Mode Placement vs Node Selection vs Background Click
       viewport.addEventListener('click', (e) => {
         // Drag suppression: > 4px movement is a pan, not a click
         if (state.dragDistance > 4) {
@@ -1236,9 +2219,35 @@
         }
         state.dragDistance = 0;
 
-        // Ignore clicks inside controls or inspector
-        if (e.target.closest('#canvas-controls') || e.target.closest('#inspector')) {
+        // Ignore clicks inside controls, inspector, header, comment pins, or popovers
+        if (e.target.closest('#canvas-controls') || e.target.closest('#inspector') || e.target.closest('#header')) {
           return;
+        }
+        if (e.target.closest('.comment-pin') || e.target.closest('.comment-popover')) {
+          return;
+        }
+
+        // ─── Comment Mode Click Handling ───
+        if (state.commentModeActive) {
+          const rect = canvas.getBoundingClientRect();
+          const x = (e.clientX - rect.left) / state.zoom;
+          const y = (e.clientY - rect.top) / state.zoom;
+
+          // Detect if a node was clicked
+          const nodeEl = e.target.closest('.node, .cluster, g[id^="flowchart-"], g[id]');
+          let nodeId = null;
+          if (nodeEl && canvas.contains(nodeEl)) {
+            nodeId = extractNodeId(nodeEl);
+          }
+
+          openDraftComment(x, y, nodeId);
+          return;
+        }
+
+        // ─── Normal Viewport Click Handling ───
+        if (state.activeCommentId) {
+          state.activeCommentId = null;
+          renderComments();
         }
 
         const nodeEl = e.target.closest('.node, .cluster, g[id^="flowchart-"]');
@@ -1364,6 +2373,42 @@
               if (!state.diagrams.some(d => d.id === state.activeId) && state.diagrams.length > 0) {
                 selectDiagram(state.diagrams[0].id, true);
               }
+            } else if (data.type === 'comment_added') {
+              if (data.thread) {
+                addOrUpdateThread(data.thread);
+                renderComments();
+              }
+            } else if (data.type === 'agent_typing') {
+              if (data.commentId) {
+                state.agentTyping.add(data.commentId);
+                renderComments();
+              }
+            } else if (data.type === 'agent_reply') {
+              if (data.commentId) {
+                state.agentTyping.delete(data.commentId);
+                const thread = state.comments.find(t => t.id === data.commentId);
+                if (thread && data.message) {
+                  if (!thread.messages.some(m => m.id === data.message.id)) {
+                    thread.messages.push(data.message);
+                  }
+                }
+                renderComments();
+              }
+            } else if (data.type === 'thread_resolved') {
+              if (data.commentId) {
+                state.agentTyping.delete(data.commentId);
+                const thread = state.comments.find(t => t.id === data.commentId);
+                if (thread) {
+                  thread.status = 'resolved';
+                }
+                updateUnresolvedBadge();
+                renderComments();
+              }
+            } else if (data.type === 'session_ended') {
+              showToast('Discussion ended. Agent is compiling the Architecture Decision Record...');
+              if (btnEndSession) {
+                btnEndSession.classList.add('ended');
+              }
             }
           } catch (err) {
             console.error('SSE message parsing error:', err);
@@ -1435,6 +2480,10 @@
 
           updateSidebar();
           selectDiagram(targetId, true);
+          const activeDiag = state.diagrams.find(d => d.id === targetId);
+          if (activeDiag) {
+            loadDocComments(activeDiag.filename || `${activeDiag.id}.md`);
+          }
         } else {
           emptyState.style.display = 'block';
         }

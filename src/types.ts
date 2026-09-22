@@ -168,6 +168,7 @@ export interface ThreadListenEvent {
 }
 
 export type ArchDiscussEvent =
+  | { type: "comment_added"; thread: CommentThread }
   | { type: "agent_typing"; commentId: string }
   | { type: "agent_reply"; commentId: string; message: CommentMessage }
   | { type: "thread_resolved"; commentId: string }
