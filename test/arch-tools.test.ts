@@ -14,6 +14,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { z } from "zod";
 import {
   parseArchitectureMarkdown,
   scanArchitectureDir,
@@ -25,9 +26,16 @@ import {
   openBrowser,
   archViewHandler,
   archTools,
+  archViewSchema,
+  loadComments,
+  saveComments,
+  getCommentsDir,
+  getCommentFilePath,
+  activeCommentThreads,
+  clearCommentCache,
   STARTER_OVERVIEW_TEMPLATE,
 } from "../src/lib/arch-tools.js";
-import type { AppContext } from "../src/types.js";
+import type { AppContext, CommentThread } from "../src/types.js";
 
 function createTempProject(): { root: string; cleanup: () => void } {
   const root = mkdtempSync(join(tmpdir(), "super-dev-arch-test-"));
@@ -360,6 +368,154 @@ test("Task 4.1: archTools exports arch_view ToolDef with schema and handler", ()
   assert.ok(tool.schema.source);
   assert.ok(tool.schema.port);
   assert.strictEqual(tool.handler, archViewHandler);
+});
+
+// ---------------------------------------------------------------------------
+// Wave 1: arch-live-discuss Tests (Task 1.1 & Task 1.2)
+// ---------------------------------------------------------------------------
+
+test("Task 1.1: archViewSchema validates action enum and defaults to view", () => {
+  const schemaObj = z.object(archViewSchema);
+
+  // 1. Default action is "view" when parsed with empty object
+  const parsedDefault = schemaObj.parse({});
+  assert.strictEqual(parsedDefault.action, "view");
+
+  // 2. All valid actions parse correctly
+  assert.strictEqual(schemaObj.parse({ action: "view" }).action, "view");
+  assert.strictEqual(schemaObj.parse({ action: "listen" }).action, "listen");
+  assert.strictEqual(schemaObj.parse({ action: "reply" }).action, "reply");
+  assert.strictEqual(schemaObj.parse({ action: "end" }).action, "end");
+
+  // 3. Invalid action throws validation error
+  assert.throws(() => {
+    schemaObj.parse({ action: "unknown_action" });
+  });
+
+  // 4. Optional fields parse properly
+  const fullArgs = {
+    action: "reply" as const,
+    doc: "overview.md",
+    source: "docs/architecture",
+    port: 3344,
+    commentId: "c-123",
+    text: "Here is agent response",
+    timeout_ms: 10000,
+  };
+  const parsedFull = schemaObj.parse(fullArgs);
+  assert.strictEqual(parsedFull.action, "reply");
+  assert.strictEqual(parsedFull.doc, "overview.md");
+  assert.strictEqual(parsedFull.source, "docs/architecture");
+  assert.strictEqual(parsedFull.port, 3344);
+  assert.strictEqual(parsedFull.commentId, "c-123");
+  assert.strictEqual(parsedFull.text, "Here is agent response");
+  assert.strictEqual(parsedFull.timeout_ms, 10000);
+
+  // 5. archTools[0].schema matches archViewSchema
+  assert.strictEqual(archTools[0].schema, archViewSchema);
+});
+
+test("Task 1.1: archViewHandler handles listen, reply, end stubs cleanly while preserving view behavior", async () => {
+  const { root, cleanup } = createTempProject();
+  try {
+    const ctx: AppContext = { projectRoot: root };
+
+    // listen stub
+    const listenRes = await archViewHandler({ action: "listen" }, ctx);
+    assert.strictEqual(listenRes.isError, undefined);
+    assert.ok(listenRes.content[0].text.includes("listen"));
+
+    // reply stub
+    const replyRes = await archViewHandler({ action: "reply", commentId: "c-1", text: "ok" }, ctx);
+    assert.strictEqual(replyRes.isError, undefined);
+    assert.ok(replyRes.content[0].text.includes("reply"));
+
+    // end stub
+    const endRes = await archViewHandler({ action: "end" }, ctx);
+    assert.strictEqual(endRes.isError, undefined);
+    assert.ok(endRes.content[0].text.includes("end"));
+  } finally {
+    cleanup();
+  }
+});
+
+test("Task 1.2: loadComments and saveComments handle caching and disk persistence to .zed/super-dev/comments/<doc>.json", () => {
+  const { root, cleanup } = createTempProject();
+  try {
+    clearCommentCache();
+
+    // 1. Loading comments for a new/empty document returns empty array
+    const emptyThreads = loadComments(root, "overview.md");
+    assert.deepEqual(emptyThreads, []);
+
+    // 2. Saving comments persists to .zed/super-dev/comments/<doc>.json
+    const sampleThread: CommentThread = {
+      id: "thread-1",
+      doc: "overview.md",
+      nodeId: "API Gateway",
+      x: 0.45,
+      y: 0.32,
+      status: "open",
+      messages: [
+        {
+          id: "msg-1",
+          author: "user",
+          text: "Can we decouple this via message queue?",
+          createdAt: 1726000000,
+        },
+      ],
+      createdAt: 1726000000,
+      updatedAt: 1726000000,
+    };
+
+    saveComments(root, "overview.md", [sampleThread]);
+
+    // Check disk file existence
+    const commentsDir = getCommentsDir(root);
+    assert.ok(existsSync(commentsDir), "comments directory must exist");
+    const expectedFilePath = getCommentFilePath(root, "overview.md");
+    assert.ok(existsSync(expectedFilePath), "overview comment file must exist on disk");
+
+    const fileContent = readFileSync(expectedFilePath, "utf-8");
+    assert.ok(fileContent.endsWith("\n"), "file should end with newline");
+    const parsedOnDisk = JSON.parse(fileContent);
+    assert.strictEqual(parsedOnDisk.length, 1);
+    assert.strictEqual(parsedOnDisk[0].id, "thread-1");
+    assert.strictEqual(parsedOnDisk[0].messages[0].text, "Can we decouple this via message queue?");
+
+    // 3. Verify in-memory cache is populated
+    assert.ok(activeCommentThreads.has("overview.md"));
+    const cachedThread = activeCommentThreads.get("overview.md")?.get("thread-1");
+    assert.ok(cachedThread);
+    assert.strictEqual(cachedThread.nodeId, "API Gateway");
+
+    // 4. Loading comments retrieves from in-memory cache
+    const loadedFromCache = loadComments(root, "overview.md");
+    assert.strictEqual(loadedFromCache.length, 1);
+    assert.strictEqual(loadedFromCache[0].id, "thread-1");
+
+    // 5. Clear cache and verify loading re-populates from disk
+    clearCommentCache();
+    assert.strictEqual(activeCommentThreads.size, 0);
+    const loadedFromDisk = loadComments(root, "overview.md");
+    assert.strictEqual(loadedFromDisk.length, 1);
+    assert.strictEqual(loadedFromDisk[0].id, "thread-1");
+    assert.ok(activeCommentThreads.has("overview.md"));
+
+    // 6. Graceful handling of corrupted JSON file on disk
+    writeFileSync(expectedFilePath, "{ not valid json !!!", "utf-8");
+    clearCommentCache();
+    const loadedCorrupt = loadComments(root, "overview.md");
+    assert.deepEqual(loadedCorrupt, [], "Corrupted JSON should return empty array without throwing");
+
+    // 7. Graceful handling of disk errors (e.g. unwritable location)
+    assert.doesNotThrow(() => {
+      saveComments("/dev/null/forbidden/path", "doc.md", [sampleThread]);
+    });
+  } finally {
+    clearCommentCache();
+    cleanup();
+  }
 });
 
 test("Task 4.1 & 4.3: MCP server registers arch_view and respects SUPER_DEV_DISABLE=arch", async () => {

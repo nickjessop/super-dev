@@ -12,16 +12,163 @@ import type {
   DiagramSection,
   ViewerInitialPayload,
   ArchServerEvent,
+  CommentMessage,
+  CommentThread,
+  CommentsDocumentPayload,
+  NodeContext,
+  ThreadListenEvent,
+  ArchDiscussEvent,
 } from "../types.js";
 import { ok, err } from "../types.js";
-import { getArchConfig } from "./settings.js";
+import { getArchConfig, getCommentsDir, ensureGitignored } from "./settings.js";
 
 export type {
   ArchitectureDiagram,
   DiagramSection,
   ViewerInitialPayload,
   ArchServerEvent,
+  CommentMessage,
+  CommentThread,
+  CommentsDocumentPayload,
+  NodeContext,
+  ThreadListenEvent,
+  ArchDiscussEvent,
 };
+
+export { getCommentsDir };
+
+// ---------------------------------------------------------------------------
+// Live Comment Discussion Cache & Storage (.zed/super-dev/comments/<doc>.json)
+// ---------------------------------------------------------------------------
+
+/**
+ * In-memory cache of active comment threads per document.
+ * Keyed by document filename/identifier (e.g. "overview.md"), mapping to thread ID -> CommentThread.
+ */
+export const activeCommentThreads = new Map<string, Map<string, CommentThread>>();
+
+/**
+ * Clears the in-memory comment cache (useful in tests or when resetting state).
+ */
+export function clearCommentCache(): void {
+  activeCommentThreads.clear();
+}
+
+/**
+ * Returns the resolved file path for storing comment threads for a given document.
+ * Sanitizes the document filename to prevent path traversal.
+ */
+export function getCommentFilePath(projectRoot: string, doc: string): string {
+  const commentsDir = getCommentsDir(projectRoot);
+  const baseDoc = path.basename(doc);
+  const filename = baseDoc.endsWith(".json") ? baseDoc : `${baseDoc}.json`;
+  return path.join(commentsDir, filename);
+}
+
+/**
+ * Loads comment threads for a given document.
+ * 1. Returns from in-memory cache if already loaded.
+ * 2. Otherwise reads from `<projectRoot>/.zed/super-dev/comments/<doc>.json`.
+ * If missing, invalid JSON, or upon any I/O error, returns empty array without throwing.
+ */
+export function loadComments(projectRoot: string, doc: string): CommentThread[] {
+  try {
+    const cached = activeCommentThreads.get(doc);
+    if (cached) {
+      return Array.from(cached.values());
+    }
+
+    const commentsDir = getCommentsDir(projectRoot);
+    const candidateFiles = [getCommentFilePath(projectRoot, doc)];
+    const base = path.basename(doc);
+    if (base.endsWith(".md")) {
+      candidateFiles.push(path.join(commentsDir, `${base.slice(0, -3)}.json`));
+    } else if (!base.endsWith(".json")) {
+      candidateFiles.push(path.join(commentsDir, `${base}.md.json`));
+    }
+
+    let targetFilePath: string | undefined;
+    for (const file of candidateFiles) {
+      if (fs.existsSync(file)) {
+        targetFilePath = file;
+        break;
+      }
+    }
+
+    if (!targetFilePath) {
+      activeCommentThreads.set(doc, new Map());
+      return [];
+    }
+
+    const content = fs.readFileSync(targetFilePath, "utf-8");
+    const parsed = JSON.parse(content);
+    let threads: CommentThread[] = [];
+    if (Array.isArray(parsed)) {
+      threads = parsed;
+    } else if (
+      parsed &&
+      typeof parsed === "object" &&
+      Array.isArray((parsed as any).threads)
+    ) {
+      threads = (parsed as any).threads;
+    }
+
+    const threadMap = new Map<string, CommentThread>();
+    for (const t of threads) {
+      if (t && typeof t === "object" && t.id) {
+        threadMap.set(t.id, t);
+      }
+    }
+    activeCommentThreads.set(doc, threadMap);
+    return threads;
+  } catch (err) {
+    console.warn(
+      `[super-dev] Warning: Failed to load comments for ${doc}: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
+    activeCommentThreads.set(doc, new Map());
+    return [];
+  }
+}
+
+/**
+ * Persists comment threads for a given document to disk and updates in-memory cache.
+ * Writes snapshot to `<projectRoot>/.zed/super-dev/comments/<doc>.json` cleanly without throwing on disk errors.
+ */
+export function saveComments(
+  projectRoot: string,
+  doc: string,
+  threads: CommentThread[]
+): void {
+  try {
+    // 1. Update in-memory cache
+    const threadMap = new Map<string, CommentThread>();
+    for (const t of threads) {
+      if (t && typeof t === "object" && t.id) {
+        threadMap.set(t.id, t);
+      }
+    }
+    activeCommentThreads.set(doc, threadMap);
+
+    // 2. Ensure directory exists and is gitignored
+    const commentsDir = getCommentsDir(projectRoot);
+    if (!fs.existsSync(commentsDir)) {
+      fs.mkdirSync(commentsDir, { recursive: true });
+    }
+    ensureGitignored(projectRoot, ".zed/");
+
+    // 3. Write snapshot with trailing newline
+    const filePath = getCommentFilePath(projectRoot, doc);
+    fs.writeFileSync(filePath, JSON.stringify(threads, null, 2) + "\n", "utf-8");
+  } catch (err) {
+    console.warn(
+      `[super-dev] Warning: Failed to save comments for ${doc}: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Starter Template & Scaffolding
@@ -743,6 +890,36 @@ export async function archViewHandler(
   args: Record<string, unknown>,
   ctx: AppContext
 ): Promise<ToolResult> {
+  const action = typeof args.action === "string" ? args.action : "view";
+
+  // Stubs for discussion actions (full implementation in Wave 2)
+  if (action === "listen") {
+    return ok(
+      JSON.stringify({
+        event: "timeout",
+        message: "Live discussion listen stub (active in Wave 2)",
+      })
+    );
+  }
+
+  if (action === "reply") {
+    return ok(
+      JSON.stringify({
+        success: true,
+        message: "Live discussion reply stub (active in Wave 2)",
+      })
+    );
+  }
+
+  if (action === "end") {
+    return ok(
+      JSON.stringify({
+        success: true,
+        message: "Live discussion end stub (active in Wave 2)",
+      })
+    );
+  }
+
   const projectRoot = ctx.projectRoot;
   const config = getArchConfig(projectRoot);
 
@@ -876,31 +1053,50 @@ export async function archViewHandler(
   );
 }
 
+export const archViewSchema = {
+  action: z
+    .enum(["view", "listen", "reply", "end"])
+    .optional()
+    .default("view")
+    .describe(
+      "Action to perform: 'view' (launch viewer), 'listen' (wait for browser comment), 'reply' (post agent response), 'end' (finish session & get ADR summary)."
+    ),
+  doc: z
+    .string()
+    .optional()
+    .describe("Target diagram filename (e.g. 'overview.md')."),
+  source: z
+    .string()
+    .optional()
+    .describe(
+      "Directory or file path for architecture docs. Overrides default 'docs/architecture'."
+    ),
+  port: z
+    .number()
+    .optional()
+    .describe("Preferred port for preview server."),
+  commentId: z
+    .string()
+    .optional()
+    .describe("Target comment thread ID for 'reply' action."),
+  text: z
+    .string()
+    .optional()
+    .describe("Reply text or feedback content."),
+  timeout_ms: z
+    .number()
+    .optional()
+    .describe(
+      "Long-poll timeout in milliseconds for 'listen' action (default: 60000ms)."
+    ),
+};
+
 export const archTools: ToolDef[] = [
   {
     name: "arch_view",
     description:
       "Launch interactive architecture diagram viewer in browser with multi-diagram sidebar, pan/zoom canvas, live reload, and side-by-side node inspector.",
-    schema: {
-      doc: z
-        .string()
-        .optional()
-        .describe(
-          "Specific diagram filename (e.g. 'credit-pipeline.md') to open as active."
-        ),
-      source: z
-        .string()
-        .optional()
-        .describe(
-          "Directory or file path for architecture documentation. Overrides default 'docs/architecture'."
-        ),
-      port: z
-        .number()
-        .optional()
-        .describe(
-          "Preferred port for preview server (defaults to ephemeral available port)."
-        ),
-    },
+    schema: archViewSchema,
     handler: archViewHandler,
   },
 ];

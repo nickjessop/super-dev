@@ -122,6 +122,57 @@ export type ArchServerEvent =
   | { type: "file_change"; id: string; diagram: ArchitectureDiagram }
   | { type: "dir_change"; diagrams: ArchitectureDiagram[] };
 
+export interface CommentMessage {
+  id: string;
+  author: "user" | "agent";
+  text: string;
+  createdAt: number;
+}
+
+export interface CommentThread {
+  id: string;
+  doc: string;          // e.g. "overview.md"
+  nodeId?: string;      // e.g. "Queue" or "API Gateway"
+  x: number;            // Normalized canvas coordinate X
+  y: number;            // Normalized canvas coordinate Y
+  status: "open" | "resolved";
+  messages: CommentMessage[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CommentsDocumentPayload {
+  doc: string;
+  threads: CommentThread[];
+}
+
+export interface NodeContext {
+  nodeId: string;
+  label?: string;
+  statusClass?: string;       // e.g. "existing" | "new" | "deprecated"
+  upstreamNodes: string[];     // nodes pointing to this node
+  downstreamNodes: string[];   // nodes this node points to
+}
+
+export interface ThreadListenEvent {
+  event: "comment_added" | "session_ended" | "timeout";
+  thread?: CommentThread;
+  latestMessage?: CommentMessage;
+  context?: {
+    doc: string;
+    diagramTitle: string;
+    mermaid: string;
+    node?: NodeContext;
+    section?: DiagramSection;
+  };
+}
+
+export type ArchDiscussEvent =
+  | { type: "agent_typing"; commentId: string }
+  | { type: "agent_reply"; commentId: string; message: CommentMessage }
+  | { type: "thread_resolved"; commentId: string }
+  | { type: "session_ended"; summary: string };
+
 // ---------------------------------------------------------------------------
 // Upstream merge state (.upstream/merge-state.json)
 // ---------------------------------------------------------------------------

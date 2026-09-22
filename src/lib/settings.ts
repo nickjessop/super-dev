@@ -8,6 +8,7 @@ export const ZED_DIR = ".zed";
 export const SUPER_DEV_SUBDIR = "super-dev";
 export const SUPER_DEV_DIR = ".super-dev"; // Legacy root directory
 export const SUPER_DEV_CONFIG_FILE = "config.json";
+export const COMMENTS_SUBDIR = "comments";
 
 export const DEFAULT_ARCH_CONFIG: SuperDevArchConfig = {
   source: "docs/architecture",
@@ -19,6 +20,14 @@ export const DEFAULT_ARCH_CONFIG: SuperDevArchConfig = {
  */
 export function getZedSuperDevDir(projectRoot: string): string {
   return join(projectRoot, ZED_DIR, SUPER_DEV_SUBDIR);
+}
+
+/**
+ * Returns the path to the comments storage directory:
+ * `<projectRoot>/.zed/super-dev/comments`
+ */
+export function getCommentsDir(projectRoot: string): string {
+  return join(getZedSuperDevDir(projectRoot), COMMENTS_SUBDIR);
 }
 
 /**
