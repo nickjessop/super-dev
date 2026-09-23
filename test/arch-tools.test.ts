@@ -283,6 +283,17 @@ test("Task 3.2: startArchServer binds to 127.0.0.1 and serves GET / and GET /api
     assert.ok(markedRes.headers["content-type"]?.includes("javascript"));
     assert.ok(markedRes.body.length > 5000);
 
+    // 4. Test GET /api/file
+    const fileRes = await httpGet(`http://127.0.0.1:${instance.port}/api/file?path=overview.md`);
+    assert.strictEqual(fileRes.statusCode, 200);
+    const fileData = JSON.parse(fileRes.body);
+    assert.strictEqual(fileData.success, true);
+    assert.ok(fileData.content.includes("mermaid"));
+
+    // Path traversal rejection
+    const traversalRes = await httpGet(`http://127.0.0.1:${instance.port}/api/file?path=../../etc/passwd`);
+    assert.strictEqual(traversalRes.statusCode, 404);
+
     await stopArchServer(archDir);
   } finally {
     await stopAllArchServers();

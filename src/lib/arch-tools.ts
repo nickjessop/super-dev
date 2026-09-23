@@ -1206,6 +1206,82 @@ export async function startArchServer(
       return;
     }
 
+    // GET /api/file: Retrieve content of a local project markdown or text file
+    if (pathname === "/api/file" && req.method === "GET") {
+      try {
+        const rawPath = parsedUrl.searchParams.get("path");
+        if (!rawPath || typeof rawPath !== "string" || !rawPath.trim()) {
+          res.writeHead(400, {
+            "Content-Type": "application/json; charset=utf-8",
+            "Access-Control-Allow-Origin": "*",
+          });
+          res.end(JSON.stringify({ error: "Missing required path parameter" }));
+          return;
+        }
+
+        const projectRoot = options.projectRoot;
+        const cleanPath = rawPath.trim().replace(/^file:\/\//, "");
+
+        // Candidate paths to check (relative to projectRoot, relative to architecture dir, or cwd)
+        const candidates = [
+          path.resolve(projectRoot, cleanPath),
+          path.resolve(options.dirPath, cleanPath),
+          path.resolve(process.cwd(), cleanPath),
+        ];
+
+        let foundPath: string | null = null;
+        for (const candidate of candidates) {
+          const rel = path.relative(projectRoot, candidate);
+          // Security: Prevent path traversal outside projectRoot
+          if (!rel.startsWith(".." + path.sep) && rel !== ".." && !path.isAbsolute(rel)) {
+            if (fs.existsSync(candidate)) {
+              try {
+                const stat = fs.statSync(candidate);
+                if (stat.isFile()) {
+                  foundPath = candidate;
+                  break;
+                }
+              } catch {}
+            }
+          }
+        }
+
+        if (!foundPath) {
+          res.writeHead(404, {
+            "Content-Type": "application/json; charset=utf-8",
+            "Access-Control-Allow-Origin": "*",
+          });
+          res.end(JSON.stringify({ error: `File not found: ${cleanPath}` }));
+          return;
+        }
+
+        const content = fs.readFileSync(foundPath, "utf-8");
+        const relPath = path.relative(projectRoot, foundPath);
+        const filename = path.basename(foundPath);
+
+        res.writeHead(200, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Access-Control-Allow-Origin": "*",
+          "Cache-Control": "no-cache",
+        });
+        res.end(
+          JSON.stringify({
+            success: true,
+            path: relPath,
+            filename,
+            content,
+          })
+        );
+      } catch (err: any) {
+        res.writeHead(500, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Access-Control-Allow-Origin": "*",
+        });
+        res.end(JSON.stringify({ error: err?.message || "Failed to read file" }));
+      }
+      return;
+    }
+
     // GET /api/diagrams: JSON API endpoint
     if (pathname === "/api/diagrams") {
       res.writeHead(200, {

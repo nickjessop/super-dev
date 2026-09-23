@@ -114,4 +114,9 @@ assert(content.includes('/api/session/end'), 'Triggers POST /api/session/end on 
 assert(content.includes('session_ended'), 'Handles session_ended SSE event (Req 5.2)');
 assert(content.includes('compiling the Architecture Decision Record') || content.includes('Architecture Decision Record'), 'Displays ADR compilation notification');
 
+// ─── Markdown Modal Viewer & Accessible Link Contrast ───
+assert(content.includes('#58a6ff'), 'Applies high-contrast accessible color (#58a6ff) to markdown links');
+assert(content.includes('id="md-modal-backdrop"') && content.includes('id="md-modal"'), 'Contains #md-modal-backdrop and #md-modal dialog container');
+assert(content.includes('openMarkdownModal') && content.includes('/api/file?path='), 'Implements openMarkdownModal with /api/file endpoint');
+
 console.log('\n🎉 All arch-viewer.html template verification checks passed successfully!');
