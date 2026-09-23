@@ -2114,6 +2114,7 @@
           if (res.ok) {
             const data = await res.json();
             if (data.success && data.thread) {
+              state.agentTyping.add(data.thread.id);
               addOrUpdateThread(data.thread);
               state.activeCommentId = data.thread.id;
               renderComments();
@@ -2128,6 +2129,10 @@
         const trimmed = (text || '').trim();
         if (!trimmed) return;
         const currentDoc = getCurrentDocFilename();
+
+        // Optimistically show typing indicator immediately
+        state.agentTyping.add(threadId);
+        renderComments();
 
         try {
           const payload = {
@@ -2150,6 +2155,8 @@
           }
         } catch (err) {
           console.error('Failed to send follow-up reply:', err);
+          state.agentTyping.delete(threadId);
+          renderComments();
         }
       }
 
