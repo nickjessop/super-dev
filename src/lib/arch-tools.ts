@@ -2057,9 +2057,10 @@ export async function archViewHandler(
       }
     }
 
-    // Safe default: 40s in production (leaving a 20s safety buffer before Zed's 60s hard client timeout)
-    const defaultTimeout = process.env.NODE_ENV === "test" ? 50 : 40000;
-    const maxSafeTimeout = 50000;
+    // Default: 5 minutes (300,000ms) to allow the user ample time to read diagrams and formulate comments
+    // without cycling LLM turns. Max allowed: 15 minutes (900,000ms).
+    const defaultTimeout = process.env.NODE_ENV === "test" ? 50 : 300000;
+    const maxSafeTimeout = 900000;
     const requestedTimeout =
       typeof args.timeout_ms === "number" &&
       !isNaN(args.timeout_ms) &&
@@ -2882,7 +2883,7 @@ export const archViewSchema = {
     .number()
     .optional()
     .describe(
-      "Long-poll timeout in milliseconds for 'listen' action (default: 40000ms, capped at 50000ms to avoid client timeout)."
+      "Long-poll timeout in milliseconds for 'listen' action (default: 300000ms / 5m, capped at 900000ms / 15m)."
     ),
   query: z
     .string()
