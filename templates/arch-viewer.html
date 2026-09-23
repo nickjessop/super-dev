@@ -5,9 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Architecture Viewer — Super Dev</title>
   
-  <!-- CDN Dependencies -->
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked@11/marked.min.js"></script>
+  <!-- Vendor Dependencies (Local with synchronous CDN fallback for offline & standalone resilience) -->
+  <script src="/vendor/mermaid.min.js"></script>
+  <script>
+    if (!window.mermaid) {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"><\/script>');
+    }
+  </script>
+  <script src="/vendor/marked.min.js"></script>
+  <script>
+    if (!window.marked) {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/marked@11/marked.min.js"><\/script>');
+    }
+  </script>
 
   <style>
     :root {
@@ -241,8 +251,7 @@
     }
 
     .sidebar-header {
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--border-subtle);
+      padding: 14px 16px 8px 16px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -411,20 +420,87 @@
       color: var(--text-bright);
     }
 
-    .canvas-hint {
+    /* Floating Canvas Info / Shortcut Hint */
+    .canvas-hint-container {
       position: absolute;
       bottom: 20px;
       right: 20px;
-      font-size: 11px;
+      z-index: 30;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+    }
+    .hint-icon-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(22, 27, 34, 0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border-color);
       color: var(--text-muted);
-      background: rgba(22, 27, 34, 0.7);
-      backdrop-filter: blur(4px);
-      padding: 4px 10px;
-      border-radius: 6px;
-      border: 1px solid var(--border-subtle);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    .canvas-hint-container:hover .hint-icon-btn,
+    .hint-icon-btn:hover {
+      color: var(--text-bright);
+      background: var(--bg-hover);
+      border-color: var(--accent-blue);
+    }
+    .canvas-hint-popover {
+      position: absolute;
+      bottom: calc(100% + 8px);
+      right: 0;
+      background: rgba(22, 27, 34, 0.95);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      padding: 10px 14px;
+      min-width: 220px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      opacity: 0;
       pointer-events: none;
+      transform: translateY(6px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
       user-select: none;
-      transition: opacity 0.3s ease;
+    }
+    .canvas-hint-container:hover .canvas-hint-popover {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0);
+    }
+    .hint-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-bright);
+      margin-bottom: 2px;
+      border-bottom: 1px solid var(--border-subtle);
+      padding-bottom: 4px;
+    }
+    .hint-row {
+      font-size: 11px;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .hint-row kbd {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-color);
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-size: 10px;
+      font-family: ui-monospace, monospace;
+      color: var(--text-bright);
     }
 
     /* Right Inspector Drawer */
@@ -706,11 +782,20 @@
       border-color: var(--border-color);
       color: var(--text-muted);
     }
-    .end-icon {
-      font-size: 11px;
-      color: var(--accent-red);
-      display: inline-flex;
-      align-items: center;
+    .comment-pin.resolved svg {
+      width: 12px;
+      height: 12px;
+      fill: currentColor;
+    }
+    .end-icon svg {
+      width: 11px;
+      height: 11px;
+      fill: currentColor;
+    }
+    .toast-icon svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
     }
     .badge, #unresolved-badge {
       display: inline-flex;
@@ -887,8 +972,14 @@
       cursor: pointer;
       display: inline-flex;
       align-items: center;
-      gap: 4px;
+      gap: 5px;
       transition: all 0.15s ease;
+    }
+    .popover-node-badge svg {
+      width: 12px;
+      height: 12px;
+      fill: currentColor;
+      flex-shrink: 0;
     }
     .popover-node-badge:hover {
       background: var(--accent-blue);
@@ -930,7 +1021,16 @@
       padding: 4px 10px;
       border-radius: 5px;
       cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
       transition: all 0.15s ease;
+    }
+    .btn-resolve svg {
+      width: 12px;
+      height: 12px;
+      fill: currentColor;
+      flex-shrink: 0;
     }
     .btn-resolve:hover {
       background: var(--accent-green);
@@ -944,11 +1044,16 @@
       font-size: 14px;
       width: 28px;
       height: 28px;
-      display: flex;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
       border-radius: 4px;
       transition: all 0.15s ease;
+    }
+    .btn-popover-close svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
     }
     .btn-popover-close:hover {
       color: var(--text-bright);
@@ -970,33 +1075,56 @@
       padding: 16px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 16px;
       overscroll-behavior: contain;
     }
 
     .comment-message {
-      padding: 12px 14px;
-      border-radius: 8px;
       font-size: 13px;
       line-height: 1.6;
-    }
-    .comment-message.agent {
-      background: rgba(56, 139, 253, 0.08);
-      border: 1px solid rgba(56, 139, 253, 0.25);
     }
     .comment-message.user {
       background: var(--bg-subtle);
       border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+    .comment-message.agent {
+      background: transparent;
+      border: none;
+      padding: 0;
+      border-radius: 0;
     }
     .msg-header {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
       margin-bottom: 6px;
       font-size: 12px;
     }
     .msg-avatar {
-      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 5px;
+      flex-shrink: 0;
+    }
+    .comment-message.agent .msg-avatar {
+      background: var(--accent-blue-bg);
+      color: var(--accent-blue);
+      border: 1px solid rgba(56, 139, 253, 0.3);
+    }
+    .comment-message.user .msg-avatar {
+      background: var(--bg-hover);
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+    }
+    .msg-avatar svg {
+      width: 13px;
+      height: 13px;
+      fill: currentColor;
     }
     .msg-author {
       font-weight: 600;
@@ -1051,16 +1179,32 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 10px 14px;
-      background: rgba(56, 139, 253, 0.08);
-      border: 1px dashed rgba(56, 139, 253, 0.3);
-      border-radius: 8px;
+      padding: 4px 0;
+      background: transparent;
+      border: none;
       font-size: 12px;
       color: var(--text-muted);
-      font-style: italic;
+    }
+    .typing-avatar {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent-blue);
+      flex-shrink: 0;
+    }
+    .typing-avatar svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+    .typing-text {
+      line-height: 1;
+      font-size: 12px;
+      color: var(--text-muted);
     }
     .typing-dots {
       display: inline-flex;
+      align-items: center;
       gap: 3px;
     }
     .typing-dots .dot {
@@ -1160,6 +1304,12 @@
       gap: 8px;
       flex-shrink: 0;
     }
+    .resolved-banner svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+      flex-shrink: 0;
+    }
 
     /* Draft Mode Form */
     .draft-body {
@@ -1181,6 +1331,12 @@
       font-size: 12px;
       color: var(--text-muted);
     }
+    .draft-context-banner svg {
+      width: 13px;
+      height: 13px;
+      fill: currentColor;
+      flex-shrink: 0;
+    }
     .draft-context-banner strong {
       color: var(--accent-blue);
       font-family: ui-monospace, SFMono-Regular, monospace;
@@ -1188,6 +1344,315 @@
     .draft-textarea {
       flex: 1;
       min-height: 160px;
+    }
+
+    /* ─── Consolidated Export Dropdown ─── */
+    .dropdown {
+      position: relative;
+      display: inline-block;
+    }
+    .dropdown-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+    .chevron-icon {
+      margin-left: 2px;
+      transition: transform 0.15s ease;
+    }
+    .dropdown.open .chevron-icon {
+      transform: rotate(180deg);
+    }
+    .dropdown-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+      min-width: 240px;
+      padding: 6px;
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+      z-index: 120;
+      animation: dropdownFadeIn 0.15s ease-out;
+    }
+    .dropdown.open .dropdown-menu {
+      display: flex;
+    }
+    @keyframes dropdownFadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-bright);
+      cursor: pointer;
+      text-align: left;
+      width: 100%;
+      transition: all 0.15s ease;
+    }
+    .dropdown-item:hover {
+      background: var(--bg-hover);
+      border-color: var(--border-subtle);
+    }
+    .dropdown-item svg {
+      width: 16px;
+      height: 16px;
+      fill: var(--accent-blue);
+      flex-shrink: 0;
+    }
+    .dropdown-item-content {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .dropdown-item-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-bright);
+    }
+    .dropdown-item-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* ─── Comments List View in Side Panel ─── */
+    .comments-list-body {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overscroll-behavior: contain;
+    }
+    .comments-filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-surface);
+      flex-shrink: 0;
+    }
+    .filter-pill {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 3px 8px;
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .filter-pill:hover {
+      color: var(--text-bright);
+      background: var(--bg-subtle);
+    }
+    .filter-pill.active {
+      background: var(--accent-blue-bg);
+      border-color: rgba(56, 139, 253, 0.4);
+      color: var(--accent-blue);
+      font-weight: 600;
+    }
+    .comment-thread-card {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 12px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: all 0.15s ease;
+    }
+    .comment-thread-card:hover {
+      background: var(--bg-hover);
+      border-color: rgba(56, 139, 253, 0.4);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+    .comment-thread-card.resolved {
+      opacity: 0.75;
+      border-color: var(--border-subtle);
+    }
+    .comment-thread-card.resolved:hover {
+      opacity: 1;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .card-thread-num {
+      font-weight: 700;
+      font-size: 12px;
+      color: var(--text-bright);
+    }
+    .card-node-badge {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 10px;
+      background: var(--accent-blue-bg);
+      color: var(--accent-blue);
+      border: 1px solid rgba(56, 139, 253, 0.3);
+      padding: 1px 6px;
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .card-node-badge svg {
+      width: 10px;
+      height: 10px;
+      fill: currentColor;
+    }
+    .card-time {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-left: auto;
+    }
+    .card-preview {
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--text-main);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      word-break: break-word;
+    }
+    .card-footer {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .card-footer svg {
+      width: 12px;
+      height: 12px;
+      fill: currentColor;
+    }
+    .btn-back-link {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+      transition: all 0.15s ease;
+      flex-shrink: 0;
+    }
+    .btn-back-link:hover {
+      color: var(--text-bright);
+      background: var(--bg-hover);
+      border-color: var(--border-subtle);
+    }
+    .btn-back-link svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+
+    /* ─── Comment Panel Resize Handle ─── */
+    .panel-resizer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: 7px;
+      cursor: col-resize;
+      z-index: 70;
+      background: transparent;
+      transition: background-color 0.15s ease;
+    }
+    .panel-resizer::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 2px;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 36px;
+      border-radius: 2px;
+      background: var(--border-color);
+      opacity: 0;
+      transition: opacity 0.15s ease, background-color 0.15s ease;
+    }
+    .panel-resizer:hover, body.resizing-panel .panel-resizer {
+      background: rgba(56, 139, 253, 0.15);
+    }
+    .panel-resizer:hover::after, body.resizing-panel .panel-resizer::after {
+      opacity: 1;
+      background: var(--accent-blue);
+    }
+    body.resizing-panel {
+      cursor: col-resize !important;
+      user-select: none !important;
+    }
+    body.resizing-panel * {
+      user-select: none !important;
+    }
+    .btn-add-comment {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      padding: 3px 8px;
+    }
+    .comments-empty-state {
+      padding: 32px 16px;
+      text-align: center;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    .comments-empty-state .empty-icon svg {
+      width: 32px;
+      height: 32px;
+      fill: var(--text-muted);
+      opacity: 0.5;
+    }
+    .comments-empty-state h4 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-bright);
+    }
+    .comments-empty-state p {
+      font-size: 12px;
+      line-height: 1.5;
+      max-width: 260px;
+    }
+    .comments-empty-state kbd {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-color);
+      border-radius: 3px;
+      padding: 1px 4px;
+      font-size: 11px;
+      font-family: inherit;
     }
   </style>
 </head>
@@ -1200,9 +1665,8 @@
         <svg viewBox="0 0 16 16"><path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 13.25 15H2.75A1.75 1.75 0 0 1 1 13.25Zm4.5 10.75V2.5h-2.75a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25Zm1.5 0h6.25a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25H7Z"></path></svg>
       </button>
       <div class="app-title">
-        <span id="app-title-text">Super Dev Architecture</span>
+        <span id="app-title-text">Super Dev</span>
       </div>
-      <div class="divider"></div>
       <span id="active-doc-badge" class="doc-badge">overview.md</span>
     </div>
 
@@ -1214,23 +1678,44 @@
     </div>
 
     <div class="header-right">
+      <button id="btn-header-comments" class="btn-action" title="View all comments on this board">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h4.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path></svg>
+        Comments <span id="comments-count-badge" class="badge">0</span>
+      </button>
+
+      <div class="dropdown" id="export-dropdown">
+        <button id="btn-export-dropdown" class="btn-action dropdown-toggle" title="Export diagram">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"></path><path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.969a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.78a.749.749 0 1 1 1.06-1.06l1.97 1.969Z"></path></svg>
+          Export
+          <svg class="chevron-icon" viewBox="0 0 16 16" width="10" height="10" fill="currentColor"><path d="M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z"></path></svg>
+        </button>
+        <div id="export-menu" class="dropdown-menu">
+          <button id="btn-export-svg" class="dropdown-item" title="Export rendered SVG vector">
+            <svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor"><path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"></path><path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.969a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.78a.749.749 0 1 1 1.06-1.06l1.97 1.969Z"></path></svg>
+            <div class="dropdown-item-content">
+              <span class="dropdown-item-title">Export SVG</span>
+              <span class="dropdown-item-desc">Vector graphic image</span>
+            </div>
+          </button>
+          <button id="btn-export-html" class="dropdown-item" title="Export standalone self-contained HTML file">
+            <svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor"><path d="M4.72 3.22a.75.75 0 0 1 1.06 1.06L2.06 8l3.72 3.72a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L.47 8.53a.75.75 0 0 1 0-1.06l4.25-4.25Zm6.56 0a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.275-.326.749.749 0 0 1 .215-.734L13.94 8l-3.72-3.72a.75.75 0 0 1 0-1.06Zm-4.996 9.88 2.5-10a.75.75 0 0 1 1.452.36l-2.5 10a.75.75 0 0 1-1.452-.36Z"></path></svg>
+            <div class="dropdown-item-content">
+              <span class="dropdown-item-title">Export HTML</span>
+              <span class="dropdown-item-desc">Standalone offline viewer bundle</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
       <button id="btn-end-session" class="btn btn-secondary btn-action" title="End Discussion and compile decisions">
-        <span class="end-icon">⏹</span> End Discussion <span id="unresolved-badge" class="badge">0</span>
-      </button>
-      <button id="btn-export-svg" class="btn-action" title="Export rendered SVG vector">
-        <svg viewBox="0 0 16 16"><path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"></path><path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.969a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.78a.749.749 0 1 1 1.06-1.06l1.97 1.969Z"></path></svg>
-        Export SVG
-      </button>
-      <button id="btn-export-html" class="btn-action" title="Export standalone self-contained HTML file">
-        <svg viewBox="0 0 16 16"><path d="M4.72 3.22a.75.75 0 0 1 1.06 1.06L2.06 8l3.72 3.72a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L.47 8.53a.75.75 0 0 1 0-1.06l4.25-4.25Zm6.56 0a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.275-.326.749.749 0 0 1 .215-.734L13.94 8l-3.72-3.72a.75.75 0 0 1 0-1.06Zm-4.996 9.88 2.5-10a.75.75 0 0 1 1.452.36l-2.5 10a.75.75 0 0 1-1.452-.36Z"></path></svg>
-        Export HTML
+        <span class="end-icon"><svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor"><rect width="10" height="10" x="3" y="3" rx="1.5"></rect></svg></span> End Discussion <span id="unresolved-badge" class="badge">0</span>
       </button>
     </div>
   </header>
 
   <!-- Toast Notification Banner -->
   <div id="toast-banner" class="toast-banner">
-    <span class="toast-icon">ℹ️</span>
+    <span class="toast-icon"><svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"></path></svg></span>
     <span id="toast-message"></span>
   </div>
 
@@ -1240,7 +1725,6 @@
     <aside id="sidebar">
       <div class="sidebar-header">
         <span class="sidebar-title">Diagrams</span>
-        <span id="diagram-count" class="sidebar-count">0</span>
       </div>
       <ul id="diagram-list" class="diagram-list">
         <!-- Rendered dynamically -->
@@ -1270,8 +1754,19 @@
         </button>
       </div>
 
-      <div class="canvas-hint">
-        Space + Drag to Pan • Wheel to Zoom • Click node to inspect
+      <!-- Floating Canvas Info / Shortcut Hint -->
+      <div id="canvas-hint-container" class="canvas-hint-container">
+        <button id="canvas-hint-btn" class="hint-icon-btn" title="Navigation shortcuts" aria-label="Navigation shortcuts">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"></path></svg>
+        </button>
+        <div class="canvas-hint-popover">
+          <div class="hint-title">Canvas Shortcuts</div>
+          <div class="hint-row"><kbd>Space</kbd> + Drag to Pan</div>
+          <div class="hint-row"><kbd>Scroll</kbd> or <kbd>Pinch</kbd> to Zoom</div>
+          <div class="hint-row">Click component to Inspect</div>
+          <div class="hint-row"><kbd>C</kbd> to drop a Comment pin</div>
+          <div class="hint-row"><kbd>⌘B</kbd> or <kbd>Ctrl+B</kbd> to toggle Sidebar</div>
+        </div>
       </div>
 
       <!-- Empty state if no diagrams -->
@@ -1302,7 +1797,10 @@
 
     <!-- Right Comment / Discussion Drawer Side Panel -->
     <aside id="comment-panel" class="comment-panel comment-popover">
-      <!-- Rendered dynamically -->
+      <div id="comment-panel-resizer" class="panel-resizer" title="Drag to resize panel"></div>
+      <div id="comment-panel-content" style="display:flex;flex-direction:column;width:100%;height:100%;overflow:hidden;flex:1;">
+        <!-- Rendered dynamically -->
+      </div>
     </aside>
   </main>
 
@@ -1350,6 +1848,8 @@
         comments: [],
         activeCommentId: null,
         draftComment: null,
+        viewingCommentsList: false,
+        commentsFilter: 'all',
         agentTyping: new Set()
       };
 
@@ -1386,11 +1886,28 @@
       const btnEndSession = document.getElementById('btn-end-session');
       const unresolvedBadge = document.getElementById('unresolved-badge');
 
+      const btnHeaderComments = document.getElementById('btn-header-comments');
+      const commentsCountBadge = document.getElementById('comments-count-badge');
+      const exportDropdown = document.getElementById('export-dropdown');
+      const btnExportDropdown = document.getElementById('btn-export-dropdown');
+
       const btnExportSvg = document.getElementById('btn-export-svg');
       const btnExportHtml = document.getElementById('btn-export-html');
 
       const liveDot = document.getElementById('live-dot');
       const liveText = document.getElementById('live-text');
+
+      // ─── SVG Vector Icons (No Emojis / Hex Symbols) ────────────
+      const ICONS = {
+        agent: '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M5.5 3.5A2.5 2.5 0 0 1 8 1a2.5 2.5 0 0 1 2.5 2.5V4h1.75C13.44 4 14.5 5.06 14.5 6.25v5.5c0 1.19-1.06 2.25-2.25 2.25h-8.5C2.56 14 1.5 12.94 1.5 11.75v-5.5C1.5 5.06 2.56 4 3.75 4H5.5v-.5Zm1.5 0a1 1 0 0 1 2 0V4H7v-.5Zm-4 2.75v5.5c0 .41.34.75.75.75h8.5c.41 0 .75-.34.75-.75v-5.5a.75.75 0 0 0-.75-.75h-8.5a.75.75 0 0 0-.75.75ZM5 8a1 1 0 1 1 2 0 1 1 0 0 1-2 0Zm4 0a1 1 0 1 1 2 0 1 1 0 0 1-2 0Zm-3.5 3a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 0 1.5h-3.5a.75.75 0 0 1-.75-.75Z"></path></svg>',
+        user: '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M10.561 8.073a6.005 6.005 0 0 1 3.432 5.142.75.75 0 1 1-1.498.07 4.5 4.5 0 0 0-8.99 0 .75.75 0 0 1-1.498-.07 6.004 6.004 0 0 1 3.431-5.142 3.999 3.999 0 1 1 5.123 0ZM10.5 5a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0Z"></path></svg>',
+        node: '<svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="m8.878.392 5.25 3.045c.54.314.872.89.872 1.514v6.098a1.75 1.75 0 0 1-.872 1.514l-5.25 3.045a1.75 1.75 0 0 1-1.756 0l-5.25-3.045A1.75 1.75 0 0 1 1 11.049V4.951c0-.624.332-1.201.872-1.515L7.122.392a1.75 1.75 0 0 1 1.756 0ZM7.875 1.69l-4.63 2.685L8 7.133l4.755-2.758-4.63-2.685a.248.248 0 0 0-.25 0ZM2.5 5.677v5.372c0 .09.047.171.125.216l4.625 2.683V8.432L2.5 5.677Zm11 5.372V5.677L8.75 8.432v5.516l4.625-2.683a.25.25 0 0 0 .125-.216Z"></path></svg>',
+        check: '<svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"></path></svg>',
+        close: '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"></path></svg>',
+        pin: '<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor"><path d="m12.596 11.596-3.535 3.536a1.5 1.5 0 0 1-2.122 0l-3.535-3.536a6.5 6.5 0 1 1 9.192 0ZM8 9.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"></path></svg>',
+        stop: '<svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor"><rect width="10" height="10" x="3" y="3" rx="1.5"></rect></svg>',
+        info: '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"></path></svg>'
+      };
 
       // ─── Discussion & Comment State Management ─────────────────
       function getCurrentDocFilename() {
@@ -1410,7 +1927,6 @@
       }
 
       function updateUnresolvedBadge() {
-        if (!unresolvedBadge) return;
         const currentDoc = getCurrentDocFilename();
         const docThreads = state.comments.filter(t => 
           t.doc === currentDoc || 
@@ -1418,8 +1934,14 @@
           (t.doc && t.doc.endsWith('.json') && t.doc.slice(0, -5) === currentDoc)
         );
         const count = docThreads.filter(t => t.status !== 'resolved').length;
-        unresolvedBadge.textContent = count;
-        unresolvedBadge.classList.toggle('resolved-zero', count === 0);
+        if (unresolvedBadge) {
+          unresolvedBadge.textContent = count;
+          unresolvedBadge.classList.toggle('resolved-zero', count === 0);
+        }
+        if (commentsCountBadge) {
+          commentsCountBadge.textContent = docThreads.length;
+          commentsCountBadge.classList.toggle('resolved-zero', docThreads.length === 0);
+        }
       }
 
       let toastTimer = null;
@@ -1520,6 +2042,7 @@
       function openDraftComment(x, y, nodeId) {
         state.draftComment = { x, y, nodeId };
         state.activeCommentId = null;
+        state.viewingCommentsList = false;
         closeInspector();
         const screenX = state.panX + x * state.zoom;
         ensurePinVisible(screenX);
@@ -1539,12 +2062,13 @@
       function closeCommentPanel() {
         state.activeCommentId = null;
         state.draftComment = null;
+        state.viewingCommentsList = false;
         renderComments();
       }
 
       function ensurePinVisible(screenX) {
         const vRect = viewport.getBoundingClientRect();
-        const panelWidth = 420;
+        const panelWidth = commentPanel ? commentPanel.getBoundingClientRect().width : 420;
         const boundary = vRect.width - panelWidth;
         if (screenX > boundary - 30) {
           const shift = screenX - (boundary - 60);
@@ -1696,15 +2220,17 @@
           pinEl.style.left = `${screenX}px`;
           pinEl.style.top = `${screenY}px`;
           pinEl.title = `Comment #${index + 1}${thread.nodeId ? ' on ' + thread.nodeId : ''}`;
-          pinEl.innerHTML = isResolved ? '✓' : `<span>${index + 1}</span>`;
+          pinEl.innerHTML = isResolved ? ICONS.check : `<span>${index + 1}</span>`;
 
           pinEl.addEventListener('click', (ev) => {
             ev.stopPropagation();
             if (state.activeCommentId === thread.id) {
               state.activeCommentId = null;
+              state.viewingCommentsList = false;
             } else {
               state.activeCommentId = thread.id;
               state.draftComment = null;
+              state.viewingCommentsList = false;
               closeInspector();
               ensurePinVisible(screenX);
             }
@@ -1737,28 +2263,171 @@
       function renderCommentPanel(docThreads) {
         if (!commentPanel) return;
 
-        if (!state.activeCommentId && !state.draftComment) {
+        const contentEl = document.getElementById('comment-panel-content') || commentPanel;
+
+        if (!state.activeCommentId && !state.draftComment && !state.viewingCommentsList) {
           commentPanel.classList.remove('open');
-          commentPanel.innerHTML = '';
+          contentEl.innerHTML = '';
           return;
         }
 
         closeInspector();
 
         if (state.draftComment) {
-          renderDraftPanel(commentPanel);
+          renderDraftPanel(contentEl);
         } else if (state.activeCommentId) {
           const thread = (docThreads || []).find(t => t.id === state.activeCommentId);
           if (!thread) {
-            commentPanel.classList.remove('open');
-            commentPanel.innerHTML = '';
+            state.activeCommentId = null;
+            state.viewingCommentsList = true;
+            renderCommentsListPanel(contentEl, docThreads);
             return;
           }
           const threadIndex = (docThreads || []).findIndex(t => t.id === state.activeCommentId);
-          renderThreadPanel(commentPanel, thread, threadIndex >= 0 ? threadIndex : 0);
+          renderThreadPanel(contentEl, thread, threadIndex >= 0 ? threadIndex : 0);
+        } else if (state.viewingCommentsList) {
+          renderCommentsListPanel(contentEl, docThreads);
         }
 
         commentPanel.classList.add('open');
+      }
+
+      function renderCommentsListPanel(panel, docThreads) {
+        const totalCount = (docThreads || []).length;
+        const unresolvedCount = (docThreads || []).filter(t => t.status !== 'resolved').length;
+        const resolvedCount = totalCount - unresolvedCount;
+
+        // Apply filter
+        const filter = state.commentsFilter || 'all';
+        let filtered = (docThreads || []).slice();
+        if (filter === 'open') {
+          filtered = filtered.filter(t => t.status !== 'resolved');
+        } else if (filter === 'resolved') {
+          filtered = filtered.filter(t => t.status === 'resolved');
+        }
+
+        // Sort comment threads: open threads first, then resolved threads
+        filtered.sort((a, b) => {
+          const aResolved = a.status === 'resolved' ? 1 : 0;
+          const bResolved = b.status === 'resolved' ? 1 : 0;
+          if (aResolved !== bResolved) {
+            return aResolved - bResolved;
+          }
+          return (docThreads || []).indexOf(a) - (docThreads || []).indexOf(b);
+        });
+
+        let cardsHtml = '';
+        if (filtered.length === 0) {
+          cardsHtml = `
+            <div class="comments-empty-state">
+              <div class="empty-icon">${ICONS.pin}</div>
+              <h4>${totalCount === 0 ? 'No comments on this diagram' : 'No comments match filter'}</h4>
+              <p>${totalCount === 0 ? 'Press <kbd>C</kbd> or click the comment tool to drop a comment anywhere on the canvas or components.' : 'Try selecting a different filter above.'}</p>
+            </div>
+          `;
+        } else {
+          filtered.forEach((thread) => {
+            const originalIndex = docThreads.findIndex(t => t.id === thread.id);
+            const isResolved = thread.status === 'resolved';
+            const messages = thread.messages || [];
+            const firstMsg = messages[0];
+            const msgCount = messages.length;
+            const previewText = firstMsg ? firstMsg.text : 'No messages yet';
+
+            cardsHtml += `
+              <div class="comment-thread-card ${isResolved ? 'resolved' : 'open'}" data-thread-id="${escapeHtml(thread.id)}">
+                <div class="card-header">
+                  <span class="card-thread-num">#${originalIndex + 1}</span>
+                  ${thread.nodeId ? `<span class="card-node-badge" title="Attached node">${ICONS.node} ${escapeHtml(thread.nodeId)}</span>` : ''}
+                  ${isResolved ? `<span class="status-pill resolved">${ICONS.check} Resolved</span>` : '<span class="status-pill open">Open</span>'}
+                  <span class="card-time">${formatTime(firstMsg?.createdAt || thread.createdAt)}</span>
+                </div>
+                <div class="card-preview">${escapeHtml(previewText)}</div>
+                <div class="card-footer">
+                  <span class="card-msg-count">${ICONS.agent} ${msgCount} ${msgCount === 1 ? 'message' : 'messages'}</span>
+                </div>
+              </div>
+            `;
+          });
+        }
+
+        panel.innerHTML = `
+          <div class="popover-header comment-panel-header">
+            <div class="comment-panel-header-left popover-header-left">
+              <span class="popover-number">Comments</span>
+              <span class="badge comments-list-count">${totalCount}</span>
+            </div>
+            <div class="comment-panel-header-actions popover-header-actions">
+              <button class="btn-action btn-add-comment" id="btn-list-add-comment" title="Add new comment (C)">
+                <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z"></path></svg>
+                New
+              </button>
+              <button class="btn-popover-close" id="btn-comments-list-close" title="Close Panel (Esc)">${ICONS.close}</button>
+            </div>
+          </div>
+          <div class="comments-filter-bar">
+            <button class="filter-pill ${filter === 'all' ? 'active' : ''}" data-filter="all">All (${totalCount})</button>
+            <button class="filter-pill ${filter === 'open' ? 'active' : ''}" data-filter="open">Open (${unresolvedCount})</button>
+            <button class="filter-pill ${filter === 'resolved' ? 'active' : ''}" data-filter="resolved">Resolved (${resolvedCount})</button>
+          </div>
+          <div class="comment-panel-body popover-body">
+            <div class="comments-list-body">
+              ${cardsHtml}
+            </div>
+          </div>
+        `;
+
+        const closeBtn = panel.querySelector('#btn-comments-list-close');
+        if (closeBtn) {
+          closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            state.viewingCommentsList = false;
+            renderComments();
+          });
+        }
+
+        const addBtn = panel.querySelector('#btn-list-add-comment');
+        if (addBtn) {
+          addBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleCommentMode(true);
+            showToast('Click anywhere on the diagram to place your comment');
+          });
+        }
+
+        panel.querySelectorAll('.filter-pill').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            state.commentsFilter = btn.dataset.filter;
+            renderComments();
+          });
+        });
+
+        panel.querySelectorAll('.comment-thread-card').forEach(card => {
+          const threadId = card.dataset.threadId;
+          card.addEventListener('click', (e) => {
+            e.stopPropagation();
+            state.activeCommentId = threadId;
+            state.viewingCommentsList = false;
+            const targetThread = (docThreads || []).find(t => t.id === threadId);
+            if (targetThread) {
+              let pinX = targetThread.x;
+              if (targetThread.nodeId) {
+                const nodeEl = findNodeElement(targetThread.nodeId);
+                if (nodeEl) {
+                  const cRect = canvas.getBoundingClientRect();
+                  const nRect = nodeEl.getBoundingClientRect();
+                  if (nRect.width > 0 && nRect.height > 0) {
+                    pinX = (nRect.right - cRect.left) / state.zoom;
+                  }
+                }
+              }
+              const screenX = state.panX + pinX * state.zoom;
+              ensurePinVisible(screenX);
+            }
+            renderComments();
+          });
+        });
       }
 
       function renderDraftPanel(panel) {
@@ -1767,16 +2436,16 @@
           <div class="popover-header comment-panel-header">
             <div class="comment-panel-header-left popover-header-left">
               <span class="popover-number">New Comment</span>
-              ${nodeId ? `<span class="popover-node-badge" title="Referenced Node">⬡ ${escapeHtml(nodeId)}</span>` : ''}
+              ${nodeId ? `<span class="popover-node-badge" title="Referenced Node">${ICONS.node} ${escapeHtml(nodeId)}</span>` : ''}
             </div>
             <div class="comment-panel-header-actions popover-header-actions">
-              <button class="btn-popover-close" id="btn-draft-close" title="Cancel (Esc)">✕</button>
+              <button class="btn-popover-close" id="btn-draft-close" title="Cancel (Esc)">${ICONS.close}</button>
             </div>
           </div>
           <div class="comment-panel-body popover-body">
             <div class="draft-body">
               <div class="draft-context-banner">
-                ${nodeId ? `📌 Anchored to node <strong>${escapeHtml(nodeId)}</strong>` : `📍 Canvas coordinates (${Math.round(x)}, ${Math.round(y)})`}
+                ${nodeId ? `${ICONS.node} <span>Anchored to node <strong>${escapeHtml(nodeId)}</strong></span>` : `${ICONS.pin} <span>Canvas coordinates (${Math.round(x)}, ${Math.round(y)})</span>`}
               </div>
               <textarea id="draft-comment-text" class="reply-textarea draft-textarea" placeholder="Ask a question, propose an architectural change, or critique this component... (Shift+Enter for newline, Enter to send)" rows="6"></textarea>
               <div class="draft-actions reply-actions">
@@ -1837,13 +2506,16 @@
         const headerHtml = `
           <div class="popover-header comment-panel-header">
             <div class="comment-panel-header-left popover-header-left">
+              <button id="btn-back-to-list" class="btn-back-link icon-btn" title="Back to all comments" aria-label="Back to all comments">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M7.78 12.53a.75.75 0 0 1-1.06 0L2.47 8.28a.75.75 0 0 1 0-1.06l4.25-4.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042L4.81 7h8.44a.75.75 0 0 1 0 1.5H4.81l2.97 2.97a.75.75 0 0 1 0 1.06Z"></path></svg>
+              </button>
               <span class="popover-number">#${index + 1}</span>
-              ${thread.nodeId ? `<button class="popover-node-badge" id="btn-focus-node" title="Focus node on canvas">⬡ ${escapeHtml(thread.nodeId)}</button>` : ''}
-              ${isResolved ? '<span class="status-pill resolved">Resolved</span>' : '<span class="status-pill open">Open</span>'}
+              ${thread.nodeId ? `<button class="popover-node-badge" id="btn-focus-node" title="Focus node on canvas">${ICONS.node} ${escapeHtml(thread.nodeId)}</button>` : ''}
+              ${isResolved ? `<span class="status-pill resolved">${ICONS.check} Resolved</span>` : '<span class="status-pill open">Open</span>'}
             </div>
             <div class="comment-panel-header-actions popover-header-actions">
-              ${!isResolved ? `<button class="btn-resolve" title="Mark as resolved">✓ Resolve</button>` : ''}
-              <button class="btn-popover-close" id="btn-thread-close" title="Close Panel (Esc)">✕</button>
+              ${!isResolved ? `<button class="btn-resolve" title="Mark as resolved">${ICONS.check} Resolve</button>` : ''}
+              <button class="btn-popover-close" id="btn-thread-close" title="Close Panel (Esc)">${ICONS.close}</button>
             </div>
           </div>
         `;
@@ -1851,8 +2523,8 @@
         let messagesHtml = '<div class="popover-messages comment-panel-messages">';
         (thread.messages || []).forEach(msg => {
           const isAgent = msg.author === 'agent';
-          const avatar = isAgent ? '🤖' : '👤';
-          const authorName = isAgent ? 'Super Dev' : 'You';
+          const avatar = isAgent ? ICONS.agent : ICONS.user;
+          const authorName = isAgent ? 'Zed Agent' : 'You';
           const timeStr = formatTime(msg.createdAt);
           let bodyContent = '';
           if (isAgent) {
@@ -1876,11 +2548,11 @@
         if (isThinking) {
           messagesHtml += `
             <div class="agent-typing-indicator">
-              <span class="typing-avatar">🤖</span>
+              <span class="typing-avatar">${ICONS.agent}</span>
+              <span class="typing-text">Agent working...</span>
               <span class="typing-dots">
                 <span class="dot"></span><span class="dot"></span><span class="dot"></span>
               </span>
-              <span class="typing-text">Agent is thinking...</span>
             </div>
           `;
         }
@@ -1896,7 +2568,8 @@
           </div>
         ` : `
           <div class="resolved-banner">
-            <span>✓ This thread has been marked as resolved.</span>
+            ${ICONS.check}
+            <span>This thread has been marked as resolved.</span>
           </div>
         `;
 
@@ -1907,6 +2580,16 @@
           closeBtn.addEventListener('click', (ev) => {
             ev.stopPropagation();
             state.activeCommentId = null;
+            renderComments();
+          });
+        }
+
+        const backBtn = panel.querySelector('#btn-back-to-list');
+        if (backBtn) {
+          backBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            state.activeCommentId = null;
+            state.viewingCommentsList = true;
             renderComments();
           });
         }
@@ -1972,6 +2655,23 @@
             msgsContainer.scrollTop = msgsContainer.scrollHeight;
           });
         }
+      }
+
+      // ─── Pan & Zoom Canvas Engine ──────────────────────────────
+      let sharpenTimer = null;
+      function scheduleSharpen() {
+        if (sharpenTimer) clearTimeout(sharpenTimer);
+        sharpenTimer = setTimeout(() => {
+          const svgEl = canvas.querySelector('svg');
+          if (svgEl) {
+            // Nudge opacity to force WebKit/Blink compositor layer refresh at new vector scale
+            const prev = svgEl.style.opacity;
+            svgEl.style.opacity = '0.9999';
+            requestAnimationFrame(() => {
+              svgEl.style.opacity = prev || '';
+            });
+          }
+        }, 60);
       }
 
       function updatePinsPositions() {
@@ -2106,12 +2806,22 @@
             }
           }
         } else if (e.key === 'Escape') {
+          if (exportDropdown && exportDropdown.classList.contains('open')) {
+            exportDropdown.classList.remove('open');
+            return;
+          }
           if (state.draftComment) {
             cancelDraftComment();
             return;
           }
           if (state.activeCommentId) {
             state.activeCommentId = null;
+            state.viewingCommentsList = true;
+            renderComments();
+            return;
+          }
+          if (state.viewingCommentsList) {
+            state.viewingCommentsList = false;
             renderComments();
             return;
           }
@@ -2205,16 +2915,60 @@
       btnZoomReset.addEventListener('click', resetZoom);
       btnFitView.addEventListener('click', fitToView);
 
-      // ─── Multi-Diagram Sidebar ─────────────────────────────────
-      function toggleSidebar() {
-        state.sidebarCollapsed = !state.sidebarCollapsed;
-        sidebar.classList.toggle('collapsed', state.sidebarCollapsed);
+      // ─── Header Comments Drawer Button ─────────────────────────
+      if (btnHeaderComments) {
+        btnHeaderComments.addEventListener('click', () => {
+          if (state.viewingCommentsList) {
+            state.viewingCommentsList = false;
+            renderComments();
+          } else {
+            state.viewingCommentsList = true;
+            state.activeCommentId = null;
+            state.draftComment = null;
+            closeInspector();
+            renderComments();
+          }
+        });
       }
-      sidebarToggle.addEventListener('click', toggleSidebar);
+
+      // ─── Export Dropdown Menu ───────────────────────────────────
+      if (btnExportDropdown && exportDropdown) {
+        btnExportDropdown.addEventListener('click', (e) => {
+          e.stopPropagation();
+          exportDropdown.classList.toggle('open');
+        });
+      }
+      document.addEventListener('click', (e) => {
+        if (exportDropdown && !exportDropdown.contains(e.target)) {
+          exportDropdown.classList.remove('open');
+        }
+      });
+
+      // ─── Multi-Diagram Sidebar ─────────────────────────────────
+      const STORAGE_KEY_SIDEBAR_COLLAPSED = 'super-dev-sidebar-collapsed';
+
+      function loadSavedSidebarState() {
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY_SIDEBAR_COLLAPSED);
+          if (saved !== null) {
+            state.sidebarCollapsed = saved === 'true';
+            sidebar.classList.toggle('collapsed', state.sidebarCollapsed);
+          }
+        } catch (e) {}
+      }
+
+      function toggleSidebar(force) {
+        state.sidebarCollapsed = typeof force === 'boolean' ? force : !state.sidebarCollapsed;
+        sidebar.classList.toggle('collapsed', state.sidebarCollapsed);
+        try {
+          localStorage.setItem(STORAGE_KEY_SIDEBAR_COLLAPSED, String(state.sidebarCollapsed));
+        } catch (e) {}
+      }
+      sidebarToggle.addEventListener('click', () => toggleSidebar());
 
       function updateSidebar() {
         diagramList.innerHTML = '';
-        diagramCount.textContent = state.diagrams.length;
+        if (diagramCount) diagramCount.textContent = state.diagrams.length;
 
         state.diagrams.forEach((diagram) => {
           const li = document.createElement('li');
@@ -2342,7 +3096,9 @@
       function ensureNodeVisible(nodeEl) {
         const vRect = viewport.getBoundingClientRect();
         const nRect = nodeEl.getBoundingClientRect();
-        const drawerWidth = 400; // inspector drawer width
+        const drawerWidth = commentPanel && commentPanel.classList.contains('open')
+          ? commentPanel.getBoundingClientRect().width
+          : 400; // inspector drawer width
         const drawerBoundary = vRect.right - drawerWidth;
 
         // If node's right edge is occluded or within 20px of the drawer
@@ -2413,9 +3169,10 @@
       }
 
       function openInspector(nodeEl) {
-        if (state.activeCommentId || state.draftComment) {
+        if (state.activeCommentId || state.draftComment || state.viewingCommentsList) {
           state.activeCommentId = null;
           state.draftComment = null;
+          state.viewingCommentsList = false;
           renderComments();
         }
 
@@ -2497,9 +3254,10 @@
         }
 
         // ─── Normal Viewport Click Handling ───
-        if (state.activeCommentId || state.draftComment) {
+        if (state.activeCommentId || state.draftComment || state.viewingCommentsList) {
           state.activeCommentId = null;
           state.draftComment = null;
+          state.viewingCommentsList = false;
           renderComments();
         }
 
@@ -2513,6 +3271,7 @@
 
       // ─── Export Features ───────────────────────────────────────
       btnExportSvg.addEventListener('click', () => {
+        if (exportDropdown) exportDropdown.classList.remove('open');
         const svg = canvas.querySelector('svg');
         if (!svg) {
           alert('No rendered diagram available to export.');
@@ -2554,6 +3313,7 @@
       });
 
       btnExportHtml.addEventListener('click', () => {
+        if (exportDropdown) exportDropdown.classList.remove('open');
         // Generate self-contained standalone HTML bundle with embedded data
         const bundleData = {
           activeId: state.activeId,
@@ -2576,6 +3336,10 @@
         const exportedCommentPanel = docClone.querySelector('#comment-panel');
         if (exportedCommentPanel) {
           exportedCommentPanel.classList.remove('open');
+        }
+        const exportedDropdown = docClone.querySelector('#export-dropdown');
+        if (exportedDropdown) {
+          exportedDropdown.classList.remove('open');
         }
 
         const htmlString = '<!DOCTYPE html>\n' + docClone.outerHTML;
@@ -2608,15 +3372,15 @@
           const liveStatusEl = document.querySelector(".live-status");
           if (currentListening) {
             liveDot.className = "live-dot listening";
-            liveText.textContent = "Agent Listening";
+            liveText.textContent = "Listening";
             if (liveStatusEl) liveStatusEl.title = "AI agent is actively waiting for your comments";
           } else if (currentEnded) {
             liveDot.className = "live-dot ended";
-            liveText.textContent = "Discussion Ended";
+            liveText.textContent = "Ended";
             if (liveStatusEl) liveStatusEl.title = "Discussion session has concluded and been archived";
           } else {
             liveDot.className = "live-dot idle";
-            liveText.textContent = "Agent Idle";
+            liveText.textContent = "Idle";
             if (liveStatusEl) liveStatusEl.title = "Browser connected via SSE, but AI agent is not currently listening";
           }
         }
@@ -2676,8 +3440,10 @@
                   if (!thread.messages.some(m => m.id === data.message.id)) {
                     thread.messages.push(data.message);
                   }
+                  renderComments();
+                } else {
+                  loadDocComments(getCurrentDocFilename());
                 }
-                renderComments();
               }
             } else if (data.type === 'thread_resolved') {
               if (data.commentId) {
@@ -2699,6 +3465,64 @@
             console.error('SSE message parsing error:', err);
           }
         };
+      }
+
+      // ─── Comment Panel Resize Engine & LocalStorage Persistence ─
+      const STORAGE_KEY_PANEL_WIDTH = 'super-dev-comment-panel-width';
+
+      function loadSavedPanelWidth() {
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY_PANEL_WIDTH);
+          if (saved) {
+            const parsed = parseInt(saved, 10);
+            if (!isNaN(parsed) && parsed >= 320 && parsed <= window.innerWidth - 80) {
+              document.documentElement.style.setProperty('--comment-panel-width', `${parsed}px`);
+              if (commentPanel) commentPanel.style.width = `${parsed}px`;
+            }
+          }
+        } catch (e) {}
+      }
+
+      function savePanelWidth(width) {
+        try {
+          localStorage.setItem(STORAGE_KEY_PANEL_WIDTH, String(width));
+        } catch (e) {}
+      }
+
+      function initPanelResizer() {
+        const resizer = document.getElementById('comment-panel-resizer');
+        if (!resizer || !commentPanel) return;
+
+        resizer.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const startX = e.clientX;
+          const startWidth = commentPanel.getBoundingClientRect().width;
+          document.body.classList.add('resizing-panel');
+
+          const onMouseMove = (ev) => {
+            const delta = startX - ev.clientX; // Dragging left increases width of right panel
+            const minWidth = 320;
+            const maxWidth = Math.min(window.innerWidth - 80, 950);
+            const newWidth = Math.min(Math.max(startWidth + delta, minWidth), maxWidth);
+
+            document.documentElement.style.setProperty('--comment-panel-width', `${newWidth}px`);
+            commentPanel.style.width = `${newWidth}px`;
+          };
+
+          const onMouseUp = () => {
+            document.body.classList.remove('resizing-panel');
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+
+            const finalWidth = Math.round(commentPanel.getBoundingClientRect().width);
+            savePanelWidth(finalWidth);
+          };
+
+          window.addEventListener('mousemove', onMouseMove);
+          window.addEventListener('mouseup', onMouseUp);
+        });
       }
 
       // ─── Helpers ───────────────────────────────────────────────
@@ -2746,9 +3570,9 @@
           const projectName = payload.projectName || 'Super Dev';
           const titleEl = document.getElementById('app-title-text');
           if (titleEl) {
-            titleEl.textContent = `${projectName} Architecture`;
+            titleEl.textContent = projectName;
           }
-          document.title = `${projectName} Architecture`;
+          document.title = `${projectName} — Architecture`;
 
           // Check URL query param ?doc=...
           const params = new URLSearchParams(window.location.search);
@@ -2779,6 +3603,11 @@
         } else {
           emptyState.style.display = 'block';
         }
+
+        // Initialize Resizer & Load Saved Preferences
+        loadSavedSidebarState();
+        loadSavedPanelWidth();
+        initPanelResizer();
 
         // Initialize Live SSE stream
         initLiveReload();

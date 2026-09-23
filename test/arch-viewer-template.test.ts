@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -22,19 +23,22 @@ function assert(condition: boolean, msg: string) {
   console.log(`PASS: ${msg}`);
 }
 
-// ─── Task 2.1: 3-pane layout, CDN libraries & multi-diagram sidebar ───
-assert(content.includes('mermaid@10/dist/mermaid.min.js'), 'Loads Mermaid.js from CDN (NF2)');
-assert(content.includes('marked@11/marked.min.js'), 'Loads Marked.js from CDN (NF2)');
+// ─── Task 2.1: 3-pane layout, vendor libraries & multi-diagram sidebar ───
+assert(content.includes('/vendor/mermaid.min.js') && content.includes('/vendor/marked.min.js'), 'References local vendor script assets');
+assert(content.includes('mermaid@10/dist/mermaid.min.js'), 'Includes Mermaid.js CDN fallback (NF2)');
+assert(content.includes('marked@11/marked.min.js'), 'Includes Marked.js CDN fallback (NF2)');
 assert(content.includes('id="arch-data"'), 'Contains #arch-data script for initial payload injection');
 assert(content.includes('id="sidebar"'), 'Contains left sidebar container (Req 3.1)');
 assert(content.includes('id="sidebar-toggle"'), 'Contains sidebar collapse toggle button (Req 3.5)');
 assert(content.includes('app-title-text'), 'Displays dynamic repository/project architecture title');
 assert(content.includes('id="diagram-list"'), 'Contains diagram list container (Req 3.1)');
-assert(content.includes('id="diagram-count"'), 'Contains diagram count badge (Req 3.1)');
+assert(content.includes('sidebar-header') && content.includes('sidebar-title'), 'Contains clean sidebar header without count (Req 3.1)');
+assert(content.includes('STORAGE_KEY_SIDEBAR_COLLAPSED') && content.includes('loadSavedSidebarState'), 'Remembers left sidebar collapsed state across refreshes');
 assert(content.includes('item-title') && content.includes('item-filename'), 'Displays title and filename for each item (Req 3.2)');
 assert(content.includes('selectDiagram'), 'Has diagram switching logic (Req 3.3)');
 assert(content.includes('searchParams.set(\'doc\'') || content.includes('docParam') || content.includes('history.replaceState'), 'Syncs active diagram with URL query param (Req 3.4)');
 assert(content.includes('collapsed'), 'Has CSS classes/logic for collapsed sidebar (Req 3.5)');
+assert(content.includes('aResolved - bResolved'), 'Sorts comment threads by open-then-closed in comments list');
 
 // ─── Task 2.2: Hardware-accelerated dynamic pan and zoom canvas engine ───
 assert(content.includes('id="viewport"') && content.includes('id="canvas"'), 'Contains viewport and canvas container (Req 5.1)');
@@ -64,8 +68,9 @@ assert(content.includes('id="inspector-close"'), 'Has ✕ close button (Req 6.5)
 assert(content.includes('e.key === \'Escape\'') || content.includes('Escape'), 'Closes on Escape key (Req 6.5)');
 
 // ─── Task 2.4: Client-side Export HTML and Export SVG buttons ───
-assert(content.includes('id="btn-export-svg"'), 'Contains Export SVG button in header (Req 7.1)');
-assert(content.includes('id="btn-export-html"'), 'Contains Export HTML button in header (Req 7.1)');
+assert(content.includes('id="export-dropdown"') && content.includes('id="btn-export-dropdown"'), 'Consolidates exports into a dropdown menu in the header');
+assert(content.includes('id="btn-export-svg"'), 'Contains Export SVG button in header dropdown (Req 7.1)');
+assert(content.includes('id="btn-export-html"'), 'Contains Export HTML button in header dropdown (Req 7.1)');
 assert(content.includes('XMLSerializer') && content.includes('image/svg+xml'), 'Generates standalone SVG export with serializer and blob (Req 7.3)');
 assert(content.includes('download') && content.includes('-architecture.html'), 'Bundles standalone self-contained HTML export (Req 7.2)');
 
@@ -76,6 +81,8 @@ assert(content.includes('file_change') && content.includes('dir_change'), 'Handl
 // ─── Wave 3: Collaborative Live Canvas Comments & Discussion (Tasks 3.1, 3.2, 3.3) ───
 // Task 3.1: Comment Tool toggle, C hotkey, and canvas/coordinate pin placement
 assert(content.includes('id="btn-tool-comment"'), 'Contains Comment Tool button in toolbar (Req 2.1)');
+assert(content.includes('id="btn-header-comments"') && content.includes('id="comments-count-badge"'), 'Contains header Comments button with count badge');
+assert(content.includes('renderCommentsListPanel'), 'Implements renderCommentsListPanel for board comments overview');
 assert(content.includes("e.key === 'c'") || content.includes("e.key === 'C'"), 'Supports C key toggle for Comment Mode (Req 2.2)');
 assert(content.includes('id="comments-layer"'), 'Contains #comments-layer child inside #canvas (Req 2.3, 2.4)');
 assert(content.includes('commentModeActive'), 'Tracks commentModeActive state');
@@ -87,10 +94,14 @@ assert(content.includes('nodeEl') && content.includes('extractNodeId'), 'Detects
 // Task 3.2: Threaded popover speech bubble / right drawer panel with agent reply & typing state
 assert(content.includes('comment-popover'), 'Renders threaded popover card / panel (Req 4.2)');
 assert(content.includes('id="comment-panel"'), 'Contains #comment-panel right-side drawer panel container');
+assert(content.includes('id="comment-panel-resizer"'), 'Contains #comment-panel-resizer handle for expanding comment panel');
+assert(content.includes('initPanelResizer') && content.includes('loadSavedPanelWidth'), 'Supports dragging edge to resize comment panel and remembers width in localStorage');
 assert(content.includes('--comment-panel-width') || content.includes('comment-panel'), 'Defines right-side comment panel drawer styling');
 assert(content.includes('renderCommentPanel'), 'Implements renderCommentPanel for right side panel');
 assert(content.includes('commentPanel.addEventListener(\'wheel\'') && content.includes('stopPropagation'), 'Isolates wheel events on comment panel to prevent canvas scroll conflict');
-assert(content.includes('agent_typing') && content.includes('Agent is thinking...'), 'Displays typing indicator when agent is thinking (Req 4.3)');
+assert(content.includes('agent_typing') && content.includes('Agent working...'), 'Displays typing indicator when agent is working (Req 4.3)');
+assert(content.includes('ICONS.agent') && content.includes('ICONS.user'), 'Uses vector SVG icons for chat messages instead of emojis');
+assert(content.includes('Zed Agent'), 'Displays "Zed Agent" as author for agent messages');
 assert(content.includes('agent_reply'), 'Handles agent_reply SSE event with markdown formatting (Req 4.1, 4.2)');
 assert(content.includes('/resolve'), 'Supports POST /api/comments/:id/resolve (Req 4.2)');
 assert(content.includes('btn-resolve'), 'Provides thread resolve button (Req 4.2)');

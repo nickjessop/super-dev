@@ -809,6 +809,24 @@ export function getTemplateHtml(projectRoot: string): string {
 </html>`;
 }
 
+export function getVendorFilePath(projectRoot: string, filename: string): string | null {
+  const safeFilename = path.basename(filename);
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const candidatePaths = [
+    path.join(currentDir, "..", "..", "templates", "vendor", safeFilename),
+    path.join(projectRoot, "templates", "vendor", safeFilename),
+    path.join(process.cwd(), "templates", "vendor", safeFilename),
+  ];
+
+  for (const candidate of candidatePaths) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Ephemeral HTTP & SSE Live Server
 // ---------------------------------------------------------------------------
@@ -843,27 +861,63 @@ export let pendingListenWaiters: LongPollWaiter[] = [];
 export let unhandledEvents: ThreadListenEvent[] = [];
 export let isAgentListening = false;
 export let isSessionEnded = false;
+let agentListeningDebounceTimer: NodeJS.Timeout | null = null;
 
 export function getAgentListening(): boolean {
   return isAgentListening;
 }
 
 export function setAgentListening(listening: boolean, sessionEnded?: boolean): void {
-  isAgentListening = listening;
   if (sessionEnded !== undefined) {
     isSessionEnded = sessionEnded;
   }
-  broadcastToActiveServers({
-    type: "agent_status",
-    listening,
-    ...(sessionEnded !== undefined ? { sessionEnded } : {}),
-  });
+
+  if (listening) {
+    if (agentListeningDebounceTimer) {
+      clearTimeout(agentListeningDebounceTimer);
+      agentListeningDebounceTimer = null;
+    }
+    isAgentListening = true;
+    broadcastToActiveServers({
+      type: "agent_status",
+      listening: true,
+      ...(isSessionEnded ? { sessionEnded: true } : {}),
+    });
+  } else {
+    // Debounce transition to idle (2.5s) so the browser status dot doesn't flicker
+    // while the agent immediately re-invokes listen after a clean long-poll window.
+    if (agentListeningDebounceTimer) clearTimeout(agentListeningDebounceTimer);
+    if (sessionEnded) {
+      isAgentListening = false;
+      broadcastToActiveServers({
+        type: "agent_status",
+        listening: false,
+        sessionEnded: true,
+      });
+      agentListeningDebounceTimer = null;
+    } else {
+      agentListeningDebounceTimer = setTimeout(() => {
+        isAgentListening = false;
+        broadcastToActiveServers({
+          type: "agent_status",
+          listening: false,
+          ...(isSessionEnded ? { sessionEnded: true } : {}),
+        });
+        agentListeningDebounceTimer = null;
+      }, 2500);
+      agentListeningDebounceTimer.unref();
+    }
+  }
 }
 
 /**
  * Clears long-poll listener queue and unhandled events (used in tests and teardowns).
  */
 export function clearLongPollWaiters(): void {
+  if (agentListeningDebounceTimer) {
+    clearTimeout(agentListeningDebounceTimer);
+    agentListeningDebounceTimer = null;
+  }
   pendingListenWaiters = [];
   unhandledEvents = [];
 }
@@ -1132,6 +1186,23 @@ export async function startArchServer(
           resetInactivityTimer();
         }
       });
+      return;
+    }
+
+    // GET /vendor/:file: Serve local vendor script assets (e.g. mermaid.min.js, marked.min.js)
+    if (pathname.startsWith("/vendor/") && req.method === "GET") {
+      const filename = pathname.replace(/^\/vendor\//, "");
+      const vendorPath = getVendorFilePath(options.projectRoot, filename);
+      if (vendorPath && fs.existsSync(vendorPath)) {
+        res.writeHead(200, {
+          "Content-Type": "application/javascript; charset=utf-8",
+          "Cache-Control": "public, max-age=86400",
+        });
+        fs.createReadStream(vendorPath).pipe(res);
+      } else {
+        res.writeHead(404, { "Content-Type": "text/plain" });
+        res.end(`Vendor asset not found: ${filename}`);
+      }
       return;
     }
 
@@ -1929,6 +2000,11 @@ export async function archViewHandler(
     action = "reply";
   }
 
+  // Any active view, listen, or reply action resets sessionEnded flag
+  if (action === "view" || action === "listen" || action === "reply") {
+    isSessionEnded = false;
+  }
+
   if (action === "listen") {
     const projectRoot = ctx.projectRoot;
     const config = getArchConfig(projectRoot);
@@ -1981,45 +2057,59 @@ export async function archViewHandler(
       }
     }
 
-    const defaultTimeout = process.env.NODE_ENV === "test" ? 50 : 60000;
-    const timeoutMs =
+    // Safe default: 40s in production (leaving a 20s safety buffer before Zed's 60s hard client timeout)
+    const defaultTimeout = process.env.NODE_ENV === "test" ? 50 : 40000;
+    const maxSafeTimeout = 50000;
+    const requestedTimeout =
       typeof args.timeout_ms === "number" &&
       !isNaN(args.timeout_ms) &&
       args.timeout_ms > 0
-        ? Math.min(args.timeout_ms, 300000)
+        ? args.timeout_ms
         : defaultTimeout;
+    const timeoutMs =
+      process.env.NODE_ENV === "test"
+        ? requestedTimeout
+        : Math.min(requestedTimeout, maxSafeTimeout);
 
     setAgentListening(true);
     let event: ThreadListenEvent;
     try {
       if (unhandledEvents.length > 0) {
-      event = unhandledEvents.shift()!;
-    } else {
-      event = await new Promise<ThreadListenEvent>((resolve) => {
-        let timer: NodeJS.Timeout | null = null;
-        let resolved = false;
+        event = unhandledEvents.shift()!;
+      } else {
+        event = await new Promise<ThreadListenEvent>((resolve) => {
+          let timer: NodeJS.Timeout | null = null;
+          let resolved = false;
 
-        const waiter: LongPollWaiter = (ev) => {
-          if (resolved) return;
-          resolved = true;
-          if (timer) clearTimeout(timer);
-          resolve(ev);
-        };
+          const waiter: LongPollWaiter = (ev) => {
+            if (resolved) return;
+            resolved = true;
+            if (timer) clearTimeout(timer);
+            resolve(ev);
+          };
 
-        pendingListenWaiters.push(waiter);
-
-        timer = setTimeout(() => {
-          if (resolved) return;
-          resolved = true;
-          const idx = pendingListenWaiters.indexOf(waiter);
-          if (idx !== -1) {
-            pendingListenWaiters.splice(idx, 1);
+          // Clean up any stale or aborted waiters before registering
+          while (pendingListenWaiters.length > 0) {
+            const stale = pendingListenWaiters.shift()!;
+            try {
+              stale({ event: "timeout" });
+            } catch {}
           }
-          resolve({ event: "timeout" });
-        }, timeoutMs);
-        timer.unref();
-      });
-    }
+
+          pendingListenWaiters.push(waiter);
+
+          timer = setTimeout(() => {
+            if (resolved) return;
+            resolved = true;
+            const idx = pendingListenWaiters.indexOf(waiter);
+            if (idx !== -1) {
+              pendingListenWaiters.splice(idx, 1);
+            }
+            resolve({ event: "timeout" });
+          }, timeoutMs);
+          timer.unref();
+        });
+      }
     } finally {
       setAgentListening(false);
     }
@@ -2792,7 +2882,7 @@ export const archViewSchema = {
     .number()
     .optional()
     .describe(
-      "Long-poll timeout in milliseconds for 'listen' action (default: 60000ms)."
+      "Long-poll timeout in milliseconds for 'listen' action (default: 40000ms, capped at 50000ms to avoid client timeout)."
     ),
   query: z
     .string()

@@ -272,6 +272,17 @@ test("Task 3.2: startArchServer binds to 127.0.0.1 and serves GET / and GET /api
     assert.strictEqual(apiData.length, 1);
     assert.strictEqual(apiData[0].id, "overview");
 
+    // 3. Test GET /vendor/mermaid.min.js and GET /vendor/marked.min.js
+    const mermaidRes = await httpGet(`http://127.0.0.1:${instance.port}/vendor/mermaid.min.js`);
+    assert.strictEqual(mermaidRes.statusCode, 200);
+    assert.ok(mermaidRes.headers["content-type"]?.includes("javascript"));
+    assert.ok(mermaidRes.body.length > 100000);
+
+    const markedRes = await httpGet(`http://127.0.0.1:${instance.port}/vendor/marked.min.js`);
+    assert.strictEqual(markedRes.statusCode, 200);
+    assert.ok(markedRes.headers["content-type"]?.includes("javascript"));
+    assert.ok(markedRes.body.length > 5000);
+
     await stopArchServer(archDir);
   } finally {
     await stopAllArchServers();
